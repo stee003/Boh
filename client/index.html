@@ -2,19 +2,45 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>VECTORBREAK</title>
-  <meta name="description" content="Vectorbreak — a fast third-person arena shooter. Break the line. Own the lattice." />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VECTORBREAK — Lattice Arena</title>
+  <meta name="description" content="Vectorbreak — fast third-person arena shooter. Break the line. Own the lattice." />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/style.css" />
+  <style>
+    /* critical boot CSS inlined for instant paint */
+    #boot{position:fixed;inset:0;z-index:20;display:grid;place-items:center;align-content:center;background:#070a12;text-align:center;gap:10px}
+    #boot h1{letter-spacing:0.26em;font-weight:800;margin:14px 0 0;font-family:"Space Grotesk",system-ui,sans-serif;color:#e6edf8}
+    #boot p{color:#6e829d;font-family:ui-monospace,monospace;font-size:12px;letter-spacing:0.06em}
+  </style>
 </head>
 <body>
   <canvas id="view"></canvas>
   <div id="ui"></div>
   <div id="boot" class="boot">
-    <div class="brand-mark" aria-hidden="true"></div>
+    <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true" style="filter:drop-shadow(0 0 24px rgba(92,255,214,0.4))">
+      <defs>
+        <linearGradient id="bgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#5cffd6"/><stop offset="100%" stop-color="#2ec8ff"/></linearGradient>
+        <radialGradient id="bglow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#5cffd6" stop-opacity="0.5"/><stop offset="100%" stop-color="#5cffd6" stop-opacity="0"/></radialGradient>
+      </defs>
+      <circle cx="48" cy="48" r="32" fill="url(#bglow)" opacity="0.7">
+        <animate attributeName="r" values="30;36;30" dur="2.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.7;0.3;0.7" dur="2.2s" repeatCount="indefinite"/>
+      </circle>
+      <g transform="rotate(0 48 48)"><animateTransform attributeName="transform" type="rotate" from="0 48 48" to="360 48 48" dur="12s" repeatCount="indefinite"/>
+        <path d="M48 8 L84 48 L48 88 L12 48 Z" fill="none" stroke="url(#bgrad)" stroke-width="2.8" stroke-linejoin="round"/>
+        <path d="M48 22 L68 48 L48 74 L28 48 Z" fill="rgba(92,255,214,0.12)" stroke="rgba(92,255,214,0.55)" stroke-width="1.4"/>
+      </g>
+      <path d="M48 40 L54 48 L48 56 L42 48 Z" fill="#ffb03a">
+        <animate attributeName="opacity" values="1;0.6;1" dur="1.2s" repeatCount="indefinite"/>
+      </path>
+    </svg>
     <h1>VECTORBREAK</h1>
     <p data-boot-line>Linking lattice…</p>
+    <div style="width:120px;height:2px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;margin-top:8px">
+      <div id="boot-bar" style="height:100%;width:30%;background:linear-gradient(90deg,#5cffd6,#2ec8ff);box-shadow:0 0 10px #5cffd6;animation:bootBar 1.6s ease-in-out infinite"></div>
+    </div>
+    <style>@keyframes bootBar{0%{transform:translateX(-100%)}50%{transform:translateX(100%)}100%{transform:translateX(200%)}}</style>
   </div>
   <script>
     (function () {
@@ -24,7 +50,7 @@
       if (line) line.textContent = it ? 'Collegamento al reticolo…' : 'Linking lattice…';
       window.__vbDismiss = function () {
         var boot = document.getElementById('boot');
-        if (boot) boot.remove();
+        if (boot) { boot.style.opacity='0'; boot.style.transition='opacity 0.5s ease'; setTimeout(()=>boot.remove(),500); }
         window.__vbReady = true;
       };
       setTimeout(function () {

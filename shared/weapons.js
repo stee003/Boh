@@ -15,6 +15,7 @@ function pattern(n, pitch, yawAmp, freq, bias = 0) {
  * damage is per bullet (or per pellet).
  * fireRate is rounds per second (bursts use cycle + burstInterval).
  * recoil values are degrees of camera kick per shot — deterministic, learnable.
+ * visual: { color, accent, barrel, mag, stock, optic, blade/fist, glow }
  */
 const LIST = [
   {
@@ -26,7 +27,7 @@ const LIST = [
     range: 46, falloffStart: 20, falloff: 0.66, mobility: 0.96, adsTime: 0.18, sprintToFire: 0.14,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#9eb0c2', accent: '#5cffd6', barrel: 0.52, mag: 'straight', stock: true, optic: 'holo' },
+    visual: { color: '#a8b4c2', accent: '#5cffd6', barrel: 0.52, mag: 'straight', stock: true, optic: 'holo', glow: true },
     sound: 'ar',
   },
   {
@@ -38,7 +39,7 @@ const LIST = [
     range: 50, falloffStart: 24, falloff: 0.72, mobility: 0.92, adsTime: 0.22, sprintToFire: 0.18,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#c4b49a', accent: '#ffb03a', barrel: 0.62, mag: 'straight', stock: true, optic: 'iron' },
+    visual: { color: '#c8b49a', accent: '#ffb03a', barrel: 0.62, mag: 'straight', stock: true, optic: 'iron' },
     sound: 'ar_heavy',
   },
   {
@@ -50,7 +51,7 @@ const LIST = [
     range: 32, falloffStart: 14, falloff: 0.48, mobility: 1.0, adsTime: 0.15, sprintToFire: 0.1,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#d0d4dc', accent: '#ff5a3c', barrel: 0.4, mag: 'straight', stock: false, optic: 'holo' },
+    visual: { color: '#d8dde4', accent: '#ff5a3c', barrel: 0.4, mag: 'straight', stock: false, optic: 'holo', glow: true },
     sound: 'ar_fast',
   },
   {
@@ -62,7 +63,7 @@ const LIST = [
     range: 58, falloffStart: 28, falloff: 0.8, mobility: 0.9, adsTime: 0.26, sprintToFire: 0.2,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#8d97a3', accent: '#2ec8ff', barrel: 0.7, mag: 'straight', stock: true, optic: 'scope' },
+    visual: { color: '#92a0b0', accent: '#2ec8ff', barrel: 0.7, mag: 'straight', stock: true, optic: 'scope' },
     sound: 'ar',
   },
   {
@@ -74,7 +75,7 @@ const LIST = [
     range: 24, falloffStart: 10, falloff: 0.42, mobility: 1.04, adsTime: 0.12, sprintToFire: 0.08,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#d5dde6', accent: '#7af0ff', barrel: 0.28, mag: 'straight', stock: false, optic: 'holo' },
+    visual: { color: '#dbe4ee', accent: '#7af0ff', barrel: 0.28, mag: 'straight', stock: false, optic: 'holo', glow: true },
     sound: 'smg',
   },
   {
@@ -86,7 +87,7 @@ const LIST = [
     range: 16, falloffStart: 7, falloff: 0.32, mobility: 1.06, adsTime: 0.1, sprintToFire: 0.06,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'mag', 'stock'],
-    visual: { color: '#f0f2f4', accent: '#ff4d6a', barrel: 0.18, mag: 'straight', stock: false, optic: 'iron' },
+    visual: { color: '#f4f6f8', accent: '#ff4d6a', barrel: 0.18, mag: 'straight', stock: false, optic: 'iron', glow: true },
     sound: 'smg_fast',
   },
   {
@@ -98,7 +99,7 @@ const LIST = [
     range: 32, falloffStart: 14, falloff: 0.58, mobility: 1.01, adsTime: 0.14, sprintToFire: 0.1,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#b9a8c9', accent: '#e4c2ff', barrel: 0.36, mag: 'straight', stock: true, optic: 'holo' },
+    visual: { color: '#c2a8d8', accent: '#e4c2ff', barrel: 0.36, mag: 'straight', stock: true, optic: 'holo', glow: true },
     sound: 'smg',
   },
   {
@@ -111,7 +112,7 @@ const LIST = [
     range: 30, falloffStart: 13, falloff: 0.55, mobility: 1.02, adsTime: 0.13, sprintToFire: 0.09,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#cfd6df', accent: '#9ad7ff', barrel: 0.34, mag: 'straight', stock: false, optic: 'holo' },
+    visual: { color: '#d4dce6', accent: '#9ad7ff', barrel: 0.34, mag: 'straight', stock: false, optic: 'holo', glow: true },
     sound: 'smg',
   },
   {
@@ -123,7 +124,7 @@ const LIST = [
     range: 14, falloffStart: 6, falloff: 0.28, mobility: 0.94, adsTime: 0.2, sprintToFire: 0.16,
     pellets: 8, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'stock'],
-    visual: { color: '#8a6a52', accent: '#ffb03a', barrel: 0.48, mag: 'none', stock: true, optic: 'iron' },
+    visual: { color: '#9a7a5e', accent: '#ffb03a', barrel: 0.48, mag: 'none', stock: true, optic: 'iron' },
     sound: 'shotgun',
   },
   {
@@ -135,7 +136,7 @@ const LIST = [
     range: 12, falloffStart: 5, falloff: 0.25, mobility: 1.0, adsTime: 0.16, sprintToFire: 0.1,
     pellets: 7, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'mag'],
-    visual: { color: '#6e7c86', accent: '#ff8a5a', barrel: 0.32, mag: 'drum', stock: false, optic: 'iron' },
+    visual: { color: '#7a8690', accent: '#ff8a5a', barrel: 0.32, mag: 'drum', stock: false, optic: 'iron', glow: true },
     sound: 'shotgun',
   },
   {
@@ -147,7 +148,7 @@ const LIST = [
     range: 28, falloffStart: 12, falloff: 0.62, mobility: 0.9, adsTime: 0.24, sprintToFire: 0.2,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'stock'],
-    visual: { color: '#4d5560', accent: '#ff5a3c', barrel: 0.66, mag: 'none', stock: true, optic: 'iron' },
+    visual: { color: '#5a646e', accent: '#ff5a3c', barrel: 0.66, mag: 'none', stock: true, optic: 'iron' },
     sound: 'shotgun_slug',
   },
   {
@@ -159,7 +160,7 @@ const LIST = [
     range: 90, falloffStart: 55, falloff: 0.9, mobility: 0.82, adsTime: 0.32, sprintToFire: 0.28,
     zoom: 1.55, pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'stock'],
-    visual: { color: '#d5dde8', accent: '#b9f3ff', barrel: 0.86, mag: 'straight', stock: true, optic: 'scope' },
+    visual: { color: '#dde6f0', accent: '#b9f3ff', barrel: 0.86, mag: 'straight', stock: true, optic: 'scope', glow: true },
     sound: 'sniper',
   },
   {
@@ -171,7 +172,7 @@ const LIST = [
     range: 72, falloffStart: 40, falloff: 0.82, mobility: 0.9, adsTime: 0.24, sprintToFire: 0.18,
     zoom: 1.28, pellets: 1, projectile: false, quiet: true, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#3e4654', accent: '#9ad7ff', barrel: 0.7, mag: 'straight', stock: true, optic: 'scope' },
+    visual: { color: '#3e4654', accent: '#7af0ff', barrel: 0.7, mag: 'straight', stock: true, optic: 'scope' },
     sound: 'sniper_quiet',
   },
   {
@@ -183,7 +184,7 @@ const LIST = [
     range: 64, falloffStart: 30, falloff: 0.78, mobility: 0.94, adsTime: 0.2, sprintToFire: 0.14,
     zoom: 1.18, pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#8d7b62', accent: '#ffd27a', barrel: 0.64, mag: 'straight', stock: true, optic: 'scope' },
+    visual: { color: '#9a8a72', accent: '#ffd27a', barrel: 0.64, mag: 'straight', stock: true, optic: 'scope' },
     sound: 'marksman',
   },
   {
@@ -196,7 +197,7 @@ const LIST = [
     range: 52, falloffStart: 24, falloff: 0.7, mobility: 0.97, adsTime: 0.16, sprintToFire: 0.12,
     pellets: 1, projectile: false, rarity: 'refined',
     attachments: ['barrel', 'optic', 'mag'],
-    visual: { color: '#6a7c92', accent: '#5cffd6', barrel: 0.5, mag: 'cell', stock: false, optic: 'holo', glow: true },
+    visual: { color: '#6e8298', accent: '#5cffd6', barrel: 0.5, mag: 'cell', stock: false, optic: 'holo', glow: true },
     sound: 'energy',
   },
   {
@@ -208,7 +209,7 @@ const LIST = [
     range: 48, falloffStart: 20, falloff: 0.7, mobility: 0.8, adsTime: 0.3, sprintToFire: 0.26,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#6a5348', accent: '#ff7a3c', barrel: 0.7, mag: 'drum', stock: true, optic: 'iron' },
+    visual: { color: '#7a6256', accent: '#ff7a3c', barrel: 0.7, mag: 'drum', stock: true, optic: 'iron' },
     sound: 'lmg',
   },
   {
@@ -220,7 +221,7 @@ const LIST = [
     range: 40, falloffStart: 16, falloff: 0.6, mobility: 0.86, adsTime: 0.24, sprintToFire: 0.18,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'mag', 'stock'],
-    visual: { color: '#7d8794', accent: '#ffb03a', barrel: 0.48, mag: 'drum', stock: true, optic: 'holo' },
+    visual: { color: '#8a96a4', accent: '#ffb03a', barrel: 0.48, mag: 'drum', stock: true, optic: 'holo', glow: true },
     sound: 'lmg',
   },
   {
@@ -232,7 +233,7 @@ const LIST = [
     range: 54, falloffStart: 24, falloff: 0.76, mobility: 0.76, adsTime: 0.34, sprintToFire: 0.28,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic', 'stock'],
-    visual: { color: '#3c4450', accent: '#8eb4ff', barrel: 0.78, mag: 'drum', stock: true, optic: 'scope' },
+    visual: { color: '#444e5c', accent: '#8eb4ff', barrel: 0.78, mag: 'drum', stock: true, optic: 'scope' },
     sound: 'lmg',
   },
   {
@@ -244,7 +245,7 @@ const LIST = [
     range: 32, falloffStart: 14, falloff: 0.6, mobility: 1.06, adsTime: 0.1, sprintToFire: 0.05,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'mag'],
-    visual: { color: '#d0d5dc', accent: '#5cffd6', barrel: 0.16, mag: 'straight', stock: false, optic: 'iron' },
+    visual: { color: '#d8dee6', accent: '#5cffd6', barrel: 0.16, mag: 'straight', stock: false, optic: 'iron', glow: true },
     sound: 'pistol',
   },
   {
@@ -256,7 +257,7 @@ const LIST = [
     range: 36, falloffStart: 16, falloff: 0.7, mobility: 1.02, adsTime: 0.14, sprintToFire: 0.08,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'optic'],
-    visual: { color: '#8a9098', accent: '#ffb0c4', barrel: 0.22, mag: 'straight', stock: false, optic: 'iron' },
+    visual: { color: '#9a9ea6', accent: '#ffb0c4', barrel: 0.22, mag: 'straight', stock: false, optic: 'iron' },
     sound: 'pistol_heavy',
   },
   {
@@ -269,7 +270,7 @@ const LIST = [
     range: 26, falloffStart: 12, falloff: 0.5, mobility: 1.04, adsTime: 0.11, sprintToFire: 0.06,
     pellets: 1, projectile: false, rarity: 'standard',
     attachments: ['barrel', 'mag'],
-    visual: { color: '#c8ccd2', accent: '#ffe08a', barrel: 0.18, mag: 'straight', stock: false, optic: 'holo' },
+    visual: { color: '#d0d6de', accent: '#ffe08a', barrel: 0.18, mag: 'straight', stock: false, optic: 'holo', glow: true },
     sound: 'pistol',
   },
   {
@@ -282,7 +283,7 @@ const LIST = [
     range: 44, falloffStart: 18, falloff: 0.64, mobility: 0.98, adsTime: 0.16, sprintToFire: 0.12,
     pellets: 1, projectile: false, rarity: 'experimental',
     attachments: ['optic', 'mag', 'stock'],
-    visual: { color: '#5c6d86', accent: '#5cffd6', barrel: 0.46, mag: 'cell', stock: false, optic: 'holo', glow: true },
+    visual: { color: '#62748a', accent: '#5cffd6', barrel: 0.46, mag: 'cell', stock: false, optic: 'holo', glow: true },
     sound: 'energy',
   },
   {
@@ -294,7 +295,7 @@ const LIST = [
     range: 14, falloffStart: 6, falloff: 0.22, mobility: 1.03, adsTime: 0.12, sprintToFire: 0.08,
     pellets: 5, projectile: false, rarity: 'experimental',
     attachments: ['barrel'],
-    visual: { color: '#6a4e78', accent: '#d28bff', barrel: 0.22, mag: 'cell', stock: false, optic: 'iron', glow: true },
+    visual: { color: '#7a5e8a', accent: '#d28bff', barrel: 0.22, mag: 'cell', stock: false, optic: 'iron', glow: true },
     sound: 'energy_blast',
   },
   {
@@ -307,7 +308,7 @@ const LIST = [
     pellets: 1, projectile: true, projectileSpeed: 72, bounces: 1, gravity: 0, radius: 0.08,
     rarity: 'experimental',
     attachments: ['optic', 'stock'],
-    visual: { color: '#d2b48a', accent: '#ffe08a', barrel: 0.4, mag: 'cell', stock: true, optic: 'holo', glow: true },
+    visual: { color: '#d8c49a', accent: '#ffe08a', barrel: 0.4, mag: 'cell', stock: true, optic: 'holo', glow: true },
     sound: 'projectile',
   },
   {
@@ -321,7 +322,7 @@ const LIST = [
     chargeSlow: 0.62, pellets: 1, projectile: true, projectileSpeed: 62, gravity: 4, radius: 0.12,
     rarity: 'experimental',
     attachments: ['optic', 'stock'],
-    visual: { color: '#4a5568', accent: '#8eb4ff', barrel: 0.58, mag: 'cell', stock: true, optic: 'holo', glow: true },
+    visual: { color: '#55647a', accent: '#8eb4ff', barrel: 0.58, mag: 'cell', stock: true, optic: 'holo', glow: true },
     sound: 'charge',
   },
   {
@@ -334,7 +335,7 @@ const LIST = [
     pellets: 1, projectile: true, projectileSpeed: 96, pierce: 1, gravity: 2.2, radius: 0.07,
     rarity: 'experimental',
     attachments: ['barrel', 'optic'],
-    visual: { color: '#8aa0b8', accent: '#7af0ff', barrel: 0.74, mag: 'cell', stock: false, optic: 'scope', glow: true },
+    visual: { color: '#96aec6', accent: '#7af0ff', barrel: 0.74, mag: 'cell', stock: false, optic: 'scope', glow: true },
     sound: 'energy',
   },
   {
@@ -347,7 +348,7 @@ const LIST = [
     pellets: 1, projectile: true, projectileSpeed: 78, splitAt: 10, splitCount: 3, splitDamage: 22, splitSpread: 0.07,
     gravity: 0, radius: 0.08, rarity: 'experimental',
     attachments: ['optic', 'mag'],
-    visual: { color: '#c9b8a0', accent: '#ffb03a', barrel: 0.42, mag: 'cell', stock: false, optic: 'holo', glow: true },
+    visual: { color: '#d0c0a4', accent: '#ffb03a', barrel: 0.42, mag: 'cell', stock: false, optic: 'holo', glow: true },
     sound: 'energy',
   },
   {
@@ -360,7 +361,7 @@ const LIST = [
     pellets: 1, projectile: true, projectileSpeed: 34, gravity: 7.5, radius: 0.09, slow: 0.38, slowTime: 0.65,
     rarity: 'experimental',
     attachments: ['optic'],
-    visual: { color: '#5a6a58', accent: '#b6ff8a', barrel: 0.5, mag: 'cell', stock: true, optic: 'holo', glow: true },
+    visual: { color: '#667a62', accent: '#b6ff8a', barrel: 0.5, mag: 'cell', stock: true, optic: 'holo', glow: true },
     sound: 'projectile',
   },
   {
@@ -372,7 +373,7 @@ const LIST = [
     range: 2.35, falloffStart: 2.35, falloff: 1, mobility: 1.08, adsTime: 0.1, sprintToFire: 0,
     melee: true, meleeArc: 0.95, meleeCd: 0.62, lunge: 4.2, pellets: 1, projectile: false,
     rarity: 'standard', attachments: [],
-    visual: { color: '#d0d6de', accent: '#5cffd6', barrel: 0.42, mag: 'none', stock: false, optic: 'iron', blade: true },
+    visual: { color: '#d6dde6', accent: '#5cffd6', barrel: 0.42, mag: 'none', stock: false, optic: 'iron', blade: true, glow: true },
     sound: 'melee',
   },
   {
@@ -384,7 +385,7 @@ const LIST = [
     range: 1.75, falloffStart: 1.75, falloff: 1, mobility: 1.04, adsTime: 0.1, sprintToFire: 0,
     melee: true, meleeArc: 0.7, meleeCd: 0.95, lunge: 2.4, slow: 0.25, slowTime: 0.35,
     pellets: 1, projectile: false, rarity: 'standard', attachments: [],
-    visual: { color: '#8a939c', accent: '#ffb03a', barrel: 0.12, mag: 'none', stock: false, optic: 'iron', fist: true },
+    visual: { color: '#9aa4ae', accent: '#ffb03a', barrel: 0.12, mag: 'none', stock: false, optic: 'iron', fist: true, glow: true },
     sound: 'melee_heavy',
   },
 ];
@@ -399,53 +400,28 @@ export const GUN_GAME_LADDER = [
   'glassline', 'vectorblade',
 ];
 
-export function getWeapon(id) {
-  return WEAPONS[id] || WEAPONS.linecut;
-}
-
-export function weaponsBySlot(slot) {
-  return LIST.filter((w) => w.slot === slot);
-}
+export function getWeapon(id) { return WEAPONS[id] || WEAPONS.linecut; }
+export function weaponsBySlot(slot) { return LIST.filter((w) => w.slot === slot); }
 
 export function resolveWeapon(state) {
   const base = getWeapon(state?.defId || state?.id || 'linecut');
   const ids = state?.attachments || [];
-  const mod = {
-    range: 1, reload: 1, mobility: 1, recoil: 1, ads: 1, zoom: 1, mag: 1,
-  };
-  const applied = [];
-  const used = new Set();
+  const mod = { range: 1, reload: 1, mobility: 1, recoil: 1, ads: 1, zoom: 1, mag: 1 };
+  const applied = []; const used = new Set();
   for (const id of ids) {
     const a = ATTACHMENTS[id];
     if (!a || used.has(a.slot)) continue;
     if (base.attachments && !base.attachments.includes(a.slot)) continue;
-    used.add(a.slot);
-    applied.push(id);
-    mod.range *= a.range || 1;
-    mod.reload *= a.reload || 1;
-    mod.mobility *= a.mobility || 1;
-    mod.recoil *= a.recoil || 1;
-    mod.ads *= a.ads || 1;
-    mod.zoom *= a.zoom || 1;
-    mod.mag *= a.mag || 1;
+    used.add(a.slot); applied.push(id);
+    mod.range *= a.range || 1; mod.reload *= a.reload || 1; mod.mobility *= a.mobility || 1; mod.recoil *= a.recoil || 1; mod.ads *= a.ads || 1; mod.zoom *= a.zoom || 1; mod.mag *= a.mag || 1;
   }
   return {
-    ...base,
-    spread: { ...base.spread },
-    recoil: base.recoil,
-    mag: Math.max(1, Math.round(base.mag * mod.mag)),
-    reserve: base.reserve,
-    reload: base.reload * mod.reload,
-    reloadEmpty: base.reloadEmpty * mod.reload,
-    range: base.range * mod.range,
-    falloffStart: base.falloffStart * mod.range,
-    mobility: base.mobility * mod.mobility,
-    adsTime: base.adsTime * mod.ads,
-    zoom: (base.zoom || 1) * mod.zoom,
-    recoilScale: mod.recoil,
-    applied,
-    // Damage is intentionally untouched by attachments.
-    damage: base.damage,
+    ...base, spread: { ...base.spread }, recoil: base.recoil,
+    mag: Math.max(1, Math.round(base.mag * mod.mag)), reserve: base.reserve,
+    reload: base.reload * mod.reload, reloadEmpty: base.reloadEmpty * mod.reload,
+    range: base.range * mod.range, falloffStart: base.falloffStart * mod.range,
+    mobility: base.mobility * mod.mobility, adsTime: base.adsTime * mod.ads, zoom: (base.zoom || 1) * mod.zoom,
+    recoilScale: mod.recoil, applied, damage: base.damage,
   };
 }
 
@@ -456,8 +432,7 @@ export function estimateTTK(weapon, hp = 100) {
   if (per <= 0) return 99;
   const shots = Math.ceil(hp / per);
   if (w.fireMode === 'burst') {
-    const burst = w.burst || 1;
-    const bursts = Math.ceil(shots / burst);
+    const burst = w.burst || 1, bursts = Math.ceil(shots / burst);
     return Math.max(0, (bursts - 1) / w.fireRate + (Math.min(burst, shots) - 1) * (w.burstInterval || 0.05));
   }
   return Math.max(0, (shots - 1) / w.fireRate);
@@ -465,20 +440,9 @@ export function estimateTTK(weapon, hp = 100) {
 
 export function createWeaponState(id, attachments = []) {
   const def = resolveWeapon({ defId: id, attachments });
-  return {
-    defId: id,
-    attachments: [...attachments],
-    mag: def.melee ? 1 : def.mag,
-    reserve: def.melee ? 1 : def.reserve,
-  };
+  return { defId: id, attachments: [...attachments], mag: def.melee ? 1 : def.mag, reserve: def.melee ? 1 : def.reserve };
 }
 
 export function defaultLoadout(characterId = 'ryn') {
-  return {
-    name: 'Kit A',
-    characterId,
-    primary: createWeaponState('linecut'),
-    secondary: createWeaponState('flick2'),
-    melee: createWeaponState('vectorblade'),
-  };
+  return { name: 'Kit A', characterId, primary: createWeaponState('linecut'), secondary: createWeaponState('flick2'), melee: createWeaponState('vectorblade') };
 }
