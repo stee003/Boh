@@ -259,6 +259,24 @@ export function thinkBot(match, bot, dt) {
     bot.yaw += dt * 0.4;
   }
   if (visible && skill.ability > 0.7 && (bot.dodgeCd || 0) <= 0 && bot.hp < 50 && match.rng() < 0.15) input.dodge = true;
+  const moved = Math.hypot(bot.x - (bot._px ?? bot.x), bot.z - (bot._pz ?? bot.z));
+  const trying = Math.abs(input.moveX) + Math.abs(input.moveY) > 0.2;
+  if (trying && bot.onGround && (bot.vaultT || 0) <= 0 && moved < 0.045) bot._stuckT = (bot._stuckT || 0) + dt;
+  else if (moved > 0.12) bot._stuckT = 0;
+  bot._px = bot.x;
+  bot._pz = bot.z;
+  if ((bot._stuckT || 0) > 0.35) {
+    input.jump = true;
+    input.sprint = true;
+    input.moveX = Math.floor((bot._stuckT || 0) * 3) % 2 === 0 ? 0.9 : -0.9;
+    input.moveY = 0.65;
+    if (bot._stuckT > 0.9) {
+      bot.path = null;
+      bot.goal = null;
+      bot.thinkT = 0;
+      bot._stuckT = 0.15;
+    }
+  }
   bot.input = input;
   void lookDir;
 }

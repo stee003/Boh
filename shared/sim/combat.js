@@ -1,3 +1,4 @@
+import { MOVE } from '../constants.js';
 import { clamp, lerp, lookDir, norm3 } from '../math.js';
 import { resolveWeapon } from '../weapons.js';
 import { aimRay, hitboxesOf, rayAABB, raySphere, raycast } from './physics.js';
@@ -75,6 +76,15 @@ export function domeBlock(origin, dir, dome, maxT) {
   return t;
 }
 
+function deeplyInside(pose, box) {
+  if (!pose || !box?.min || !box?.max) return false;
+  const reach = MOVE.radius * 0.55;
+  if (pose.y + 1.5 <= box.min.y + 0.05 || pose.y >= box.max.y - 0.02) return false;
+  const cx = Math.max(box.min.x, Math.min(pose.x, box.max.x));
+  const cz = Math.max(box.min.z, Math.min(pose.z, box.max.z));
+  return (pose.x - cx) ** 2 + (pose.z - cz) ** 2 < reach * reach;
+}
+
 export function traceShot(match, attacker, origin, dir, maxDist) {
   const solids = match._solidCache || [];
   let bestT = maxDist;
@@ -92,6 +102,7 @@ export function traceShot(match, attacker, origin, dir, maxDist) {
       best = { kind: 'dome', t, deployable: d };
     }
   }
+  let playerBest = null;
   for (const p of match.players) {
     if (!p.alive || p.id === attacker.id) continue;
     if (p.spawnImmunity > 0 && !p.isDecoy) continue;
@@ -99,13 +110,23 @@ export function traceShot(match, attacker, origin, dir, maxDist) {
     const pose = lagged(match, p, attacker);
     for (const hb of hitboxesOf(pose)) {
       const t = hb.type === 'sphere'
-        ? raySphere(origin, dir, hb.c, hb.r, bestT)
-        : rayAABB(origin, dir, hb, bestT);
-      if (t != null && t < bestT) {
-        bestT = t;
-        best = { kind: 'player', t, player: p, zone: hb.zone };
+        ? raySphere(origin, dir, hb.c, hb.r, maxDist)
+        : rayAABB(origin, dir, hb, maxDist);
+      if (t != null && (!playerBest || t < playerBest.t)) {
+        playerBest = { kind: 'player', t, player: p, zone: hb.zone, pose };
       }
     }
+  }
+  if (playerBest && (!best || playerBest.t < best.t)) {
+    best = playerBest;
+    bestT = playerBest.t;
+  } else if (
+    playerBest && best?.kind === 'world' && deeplyInside(playerBest.pose, best.box)
+    && playerBest.t <= best.t + 0.35
+  ) {
+    // A victim swallowed by the blocking volume is hittable; a brush in front of cover is not.
+    best = playerBest;
+    bestT = playerBest.t;
   }
   if (best) {
     best.point = {
@@ -282,10 +303,17 @@ export function stepWeapons(match, player, dt) {
   const def = currentDef(player);
   const state = currentState(player);
 
-  if (input.reload && state && !def.melee && !player.reloading && state.mag < def.mag && state.reserve > 0) {
+  // Switch clears reload first. Auto-reload only the slot that is actually empty after that.
+  const emptyMag = !!(state && state.mag <= 0);
+  const reloadTime = emptyMag ? (def.reloadEmpty || 0) : (def.reload || 0);
+  const canReload = !!(state && !def.melee && !player.reloading && state.mag < def.mag && state.reserve > 0 && reloadTime > 0);
+  const manual = !!input.reload && canReload;
+  const auto = !manual && canReload && emptyMag && (def.reloadEmpty || 0) > 0 && (player.burstQueue || 0) <= 0;
+  if (manual || auto) {
     player.reloading = true;
-    player.reloadT = (state.mag <= 0 ? def.reloadEmpty : def.reload) * (player.reloadMul || 1);
+    player.reloadT = reloadTime * (player.reloadMul || 1);
     player.burstQueue = 0;
+    match.events.push({ type: 'reload_start', playerId: player.id, auto });
   }
   if (player.reloading) {
     if (firingHeld && state.mag > 0) {

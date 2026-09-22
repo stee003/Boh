@@ -7,7 +7,7 @@ import { clamp, distXZ, makeRng } from '../math.js';
 import { stepAbilityTimers, stepDeployables, tryAbilities, addUlt } from './abilities.js';
 import { thinkBot, buildNav } from './ai.js';
 import { currentDef, stepProjectiles, stepWeapons } from './combat.js';
-import { emptyInput, findSupport, raycast, simulateMovement } from './physics.js';
+import { bodyHeight, emptyInput, findClearSpot, findSupport, isEmbedded, raycast, resolveEmbed, simulateMovement } from './physics.js';
 
 export { emptyInput, buildNav };
 
@@ -406,7 +406,11 @@ function stepPlayer(match, player, dt) {
   if (frozen) return;
   tryAbilities(match, player);
   const input = player.input || emptyInput();
+  applyZoneSpeed(match, player);
   simulateMovement(player, input, match._solidCache, dt, match.rules);
+  if ((player.vaultT || 0) <= 0 && (player.phasingT || 0) <= 0) {
+    resolveEmbed(player, match._solidCache, bodyHeight(player));
+  }
   applyZones(match, player);
   stepWeapons(match, player, dt);
   stepCores(match, player);
@@ -437,10 +441,19 @@ function stepDummy(match, player, dt) {
   }
 }
 
+function inZone(player, z) {
+  return player.x >= z.min.x && player.x <= z.max.x && player.y >= z.min.y && player.y <= z.max.y && player.z >= z.min.z && player.z <= z.max.z;
+}
+
+function applyZoneSpeed(match, player) {
+  for (const z of match.map.zones || []) {
+    if (z.type === 'slow' && inZone(player, z)) player.speedMul *= z.mul || 0.8;
+  }
+}
+
 function applyZones(match, player) {
   for (const z of match.map.zones || []) {
-    if (player.x < z.min.x || player.x > z.max.x || player.y < z.min.y || player.y > z.max.y || player.z < z.min.z || player.z > z.max.z) continue;
-    if (z.type === 'slow') player.speedMul *= z.mul || 0.8;
+    if (!inZone(player, z)) continue;
     if (z.type === 'kill') {
       hurtPlayer(match, player, 999, null, { zone: 'body', weaponId: 'void', dist: 0, point: { x: player.x, y: player.y, z: player.z }, void: true });
     }
@@ -524,18 +537,39 @@ function resetCore(match, team) {
   for (const p of match.players) if (p.carrying === team) p.carrying = null;
 }
 
+function spawnChoices(match, player) {
+  const ffa = player.team === 'ffa' || match.modeId === 'free_fracture' || match.modeId === 'arsenal_march';
+  return (ffa ? match.map.spawns.ffa : match.map.spawns[player.team]) || match.map.spawns.a || [{ x: 0, y: 0, z: 0, yaw: 0 }];
+}
+
 export function spawnPlayer(match, player) {
   if (player.pendingLoadout && !match.rules.lockLoadout) applyLoadout(player, player.pendingLoadout, match);
   const s = pickSpawn(match, player);
-  const solids = match._solidCache || match.map.boxes.filter((b) => b.solid);
-  const support = findSupport(s.x, s.z, 0.3, (s.y || 0) + 1.5, 4, solids);
-  player.x = s.x;
-  player.y = support ? support.y : (s.y || 0);
-  player.z = s.z;
+  const solids = match._solidCache || match.map.boxes.filter((b) => b.solid !== false);
+  const seen = new Set();
+  const ordered = [];
+  for (const cand of [s, ...spawnChoices(match, player)]) {
+    const key = `${cand.x}|${cand.z}|${cand.y || 0}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(cand);
+  }
+  let placed = { x: s.x, y: s.y || 0, z: s.z, yaw: s.yaw || 0 };
+  if (isEmbedded(placed.x, placed.y, placed.z, solids)) {
+    for (const cand of ordered) {
+      const spot = findClearSpot(cand.x, cand.y || 0, cand.z, solids);
+      if (spot) { placed = { ...placed, ...spot, yaw: cand.yaw || placed.yaw }; break; }
+    }
+  }
+  const support = findSupport(placed.x, placed.z, 0.3, placed.y + 1.5, 4, solids);
+  if (support && !isEmbedded(placed.x, support.y, placed.z, solids)) placed.y = support.y;
+  player.x = placed.x;
+  player.y = placed.y;
+  player.z = placed.z;
   player.vx = 0;
   player.vy = 0;
   player.vz = 0;
-  player.yaw = s.yaw || 0;
+  player.yaw = placed.yaw || s.yaw || 0;
   player.pitch = 0;
   player.hp = player.maxHp;
   player.armor = (match.rules.armor || 0) + (player.mods?.armor || 0);
@@ -577,6 +611,7 @@ export function pickSpawn(match, player) {
       if (match.time - death.time < 8 && Math.hypot(death.x - s.x, death.z - s.z) < 7) score -= 20;
     }
     if (active && Math.hypot(active.x - s.x, active.z - s.z) < 8) score -= 14;
+    if (isEmbedded(s.x, s.y || 0, s.z, match._solidCache || [])) score -= 500;
     if (score > bestScore) { bestScore = score; best = s; }
   }
   return best || list[0];

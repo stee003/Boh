@@ -9,6 +9,8 @@
  *    pulsepoint rotates all five)
  */
 
+import { penetrates } from './sim/physics.js';
+
 let seq = 1;
 const nextId = (prefix) => `${prefix}${seq++}`;
 
@@ -209,7 +211,7 @@ function neonDistrict() {
     spawns: {
       a: [sp(-10, -30, PI), sp(0, -31, PI), sp(12, -30, PI), sp(-22, -30, PI), sp(22, -29, PI * 0.85)],
       b: [sp(-10, 30, 0), sp(0, 31, 0), sp(12, 30, 0), sp(-22, 30, 0.2), sp(24, 29, -0.3)],
-      ffa: [sp(-22, -18, 0.4), sp(24, 8, 0, 3.3), sp(0, -14, PI), sp(-16, 20, 0), sp(8, -10, PI / 2), sp(8, 18, 0)],
+      ffa: [sp(-22, -18, 0.4), sp(24, 8, 0, 3.3), sp(3, -18, PI), sp(-16, 20, 0), sp(8, -10, PI / 2), sp(8, 18, 0)],
     },
     objectives: [
       { id: 'lane_w', x: -22, y: 0, z: -8, radius: 3.2 },
@@ -378,7 +380,7 @@ function floodline() {
       { x: -12, y: 2, z: 16, color: '#3dffe8', intensity: 4, distance: 10 },
     ],
     spawns: {
-      a: [sp(-20, -28, PI), sp(-8, -28, PI), sp(16, -28, PI), sp(30, -26, PI), sp(-32, -20, PI / 2)],
+      a: [sp(-20, -28, PI), sp(-8, -28, PI), sp(16, -28, PI), sp(30, -26, PI), sp(-32, -26, PI / 2)],
       b: [sp(-20, 28, 0), sp(-8, 28, 0), sp(18, 28, 0), sp(30, 26, 0), sp(-30, 22, -0.4)],
       ffa: [sp(-14, 0, 0), sp(14, -10, PI), sp(0, 8, 1), sp(-24, 16, 0), sp(24, -20, PI), sp(8, 20, 0)],
     },
@@ -535,7 +537,7 @@ function skybridge() {
     spawns: {
       a: [sp(-30, -22, PI * 0.85), sp(-14, -22, PI), sp(0, -22, PI), sp(14, -22, PI), sp(28, -20, PI)],
       b: [sp(-28, 22, 0.2), sp(-12, 22, 0), sp(0, 22, 0), sp(16, 22, 0), sp(30, 20, -0.2)],
-      ffa: [sp(-22, 2, 0, 8.2), sp(22, 10, PI, 4.1), sp(0, 0, 1.2, 8.2), sp(-8, -14, PI), sp(10, 10, 0), sp(-30, 6, 0.5)],
+      ffa: [sp(-22, 2, 0, 8.2), sp(28, 10, PI, 4.1), sp(0, 0, 1.2, 8.2), sp(-8, -14, PI), sp(10, 10, 0), sp(-30, 6, 0.5)],
     },
     objectives: [
       { id: 'west', x: -26, y: 4.1, z: -10, radius: 3 },
@@ -1010,8 +1012,8 @@ function atriumLoop() {
       { x: 0, y: 7, z: -22, color: '#ffd27a', intensity: 4, distance: 10 },
     ],
     spawns: {
-      a: [sp(-10, -22, PI), sp(0, -22, PI), sp(10, -22, PI), sp(-18, -18, PI * 0.8), sp(18, -18, PI * 1.2)],
-      b: [sp(-10, 22, 0), sp(0, 22, 0), sp(10, 22, 0), sp(-18, 18, 0.3), sp(18, 18, -0.3)],
+      a: [sp(-10, -22, PI), sp(-8, -22, PI), sp(10, -22, PI), sp(-18, -18, PI * 0.8), sp(18, -18, PI * 1.2)],
+      b: [sp(-10, 22, 0), sp(8, 22, 0), sp(10, 22, 0), sp(-18, 18, 0.3), sp(18, 18, -0.3)],
       ffa: [sp(0, -16, PI, 4), sp(4, 3, 0, -3.1), sp(-16, 0, 0.6, 4), sp(12, -14, PI), sp(-8, 14, 0.2), sp(16, 6, -1)],
     },
     objectives: [
@@ -1069,7 +1071,7 @@ function calibrationBay() {
     spawns: {
       a: [sp(0, -30, PI), sp(-6, -30, PI), sp(6, -30, PI)],
       b: [sp(0, 16, 0)],
-      ffa: [sp(0, -30, PI), sp(-8, -16, PI), sp(8, -12, PI)],
+      ffa: [sp(0, -30, PI), sp(-8, -16, PI), sp(4, -12, PI)],
     },
     objectives: [
       { id: 'pad', x: 0, y: 0, z: -4, radius: 2.5 },
@@ -1127,11 +1129,9 @@ export function validateMap(map) {
   for (const team of ['a', 'b', 'ffa']) {
     for (const s of map.spawns?.[team] || []) {
       if (![s.x, s.y, s.z].every(Number.isFinite)) errors.push('bad spawn');
-      for (const b of solids) {
-        if (b.boundary) continue;
-        const inside = s.x > b.min.x + 0.2 && s.x < b.max.x - 0.2 && s.z > b.min.z + 0.2 && s.z < b.max.z - 0.2 && s.y + 0.2 < b.max.y && s.y + 1.2 > b.min.y;
-        if (inside) errors.push(`spawn inside ${b.id} on ${map.id}`);
-      }
+      const y = s.y || 0;
+      const hit = penetrates(s.x, y, s.z, 0.34, 1.68, solids.filter((b) => !b.boundary));
+      if (hit) errors.push(`spawn inside ${hit.id} on ${map.id}`);
     }
   }
   return errors;

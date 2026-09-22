@@ -328,7 +328,66 @@ input[type="range"] { width: 100%; accent-color: var(--mint); }
 }
 .chatlog { position: absolute; left: 18px; bottom: 130px; width: min(420px, 46vw); display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .chatlog div { background: rgba(7,8,12,0.45); padding: 2px 8px; border-left: 2px solid var(--line); }
-.chatbox { position: absolute; left: 18px; bottom: 96px; width: min(420px, 46vw); pointer-events: auto; display: flex; gap: 6px; }
+.chatbox { position: absolute; left: 18px; bottom: 268px; width: min(420px, 46vw); pointer-events: auto; display: flex; gap: 6px; }
+
+.playerbar {
+  position: absolute; left: 16px; right: 16px; bottom: 14px;
+  display: grid; grid-template-columns: minmax(200px, 280px) minmax(160px, 1fr) minmax(168px, 250px);
+  align-items: end; gap: 14px; pointer-events: none; z-index: 3;
+}
+.playerbar .vitals, .playerbar .ammo, .playerbar .abilities { position: static; transform: none; min-width: 0; }
+.playerbar .abilities { justify-self: center; }
+.playerbar .ammo { justify-self: end; }
+.vital-top { display: flex; align-items: center; gap: 8px; }
+.callsign { flex: 1; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-pip { width: 10px; height: 10px; border-radius: 2px; background: var(--muted); box-shadow: 0 0 8px currentColor; flex: none; }
+.team-pip.ta { background: var(--a); color: var(--a); }
+.team-pip.tb { background: var(--b); color: var(--b); }
+.team-pip.ff { background: var(--amber); color: var(--amber); }
+.bar.hp span.low { background: linear-gradient(90deg, #ff5a6a, #ffb03a); }
+.ammo-row { display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; }
+.ammo-row em { color: var(--muted); font-style: normal; font-size: 16px; }
+.ammo.reloading { border-right-color: var(--mint); }
+.reload-line { color: var(--mint); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; margin-top: 4px; }
+.playerbar .ability { width: 112px; height: 58px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 6px 8px; }
+.ability .key { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; color: var(--amber); }
+.ability .cd { font-size: 16px; }
+.feed {
+  position: absolute; left: 18px; bottom: 128px; top: auto; right: auto;
+  width: min(440px, 48vw); align-items: stretch; z-index: 3; pointer-events: none;
+}
+.feed .kf {
+  display: flex; align-items: center; gap: 8px;
+  background: linear-gradient(90deg, rgba(7,8,12,0.82), rgba(7,8,12,0.45));
+  border: 1px solid var(--line-soft); border-left: 3px solid var(--line);
+  padding: 5px 10px; font-size: 12px; font-family: var(--mono);
+  animation: feedIn 0.22s var(--ease) both;
+}
+.feed .kf.you { border-left-color: var(--mint); }
+.feed .kf b.ta { color: var(--a); }
+.feed .kf b.tb { color: var(--b); }
+.feed .kf b.ff { color: var(--amber); }
+.feed .kf .sep { color: var(--muted); }
+.feed .kf .wpn { margin-left: auto; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; font-size: 10px; }
+.feed .kf .hs { color: var(--amber); font-style: normal; font-size: 10px; letter-spacing: 0.08em; }
+.chatlog { bottom: 292px; }
+.hitmark {
+  position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px;
+  pointer-events: none; z-index: 5;
+}
+.hitmark i { position: absolute; left: 12px; top: 1px; width: 3px; height: 26px; background: #fff; border-radius: 1px; }
+.hitmark i:first-child { transform: rotate(42deg); }
+.hitmark i:last-child { transform: rotate(-42deg); }
+.hitmark.head i { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.hitmark.pop { animation: hitPop 0.22s var(--ease); }
+@keyframes hitPop { from { transform: scale(1.45); } to { transform: scale(1); } }
+.floaters { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.floaters span {
+  position: absolute; transform: translate(-50%, -50%);
+  font-family: var(--mono); font-size: 16px; font-weight: 700; color: #fff;
+  text-shadow: 0 1px 2px #000, 0 0 10px rgba(0,0,0,0.65);
+}
+.floaters span.hs { color: var(--amber); font-size: 18px; }
 .chatbox input, .chatbox button { pointer-events: auto; }
 
 /* ── Overlays ─────────────────────────────────────────────── */

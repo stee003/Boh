@@ -708,6 +708,18 @@ export function showHUD(on) {
   document.getElementById('hud')?.classList.toggle('hidden', !on);
 }
 
+function bindLabel(game, action, fallback) {
+  const code = game.settings?.bindings?.[action] || fallback;
+  return String(code).replace(/^Key/, '').replace(/^Digit/, '').replace('Left', '').replace('Right', '');
+}
+
+function abilityName(game, ch, key) {
+  if (!ch) return game.t(key === 'tactical' ? 'hud.tactical' : 'hud.ultimate');
+  const full = game.t(key === 'tactical' ? ch.tacticalKey : ch.ultimateKey);
+  const name = String(full).split(':')[0].replace(/^Passive:\s*/i, '').trim();
+  return name.length > 18 ? `${name.slice(0, 16)}…` : name;
+}
+
 export function renderHUD(game) {
   const hud = document.getElementById('hud');
   if (!hud) return;
@@ -720,18 +732,31 @@ export function renderHUD(game) {
     <div class="compass" id="compass"></div>
     <canvas class="minimap" id="minimap" width="148" height="148"></canvas>
     <div class="feed" id="feed"></div>
-    <div class="vitals">
-      <div class="hp" id="hp">100</div>
-      <div class="bar hp"><span id="hp-bar" style="width:100%"></span></div>
-      <div class="sub" id="armor-line"></div>
-      <div class="sub" id="status-line"></div>
-    </div>
-    <div class="ammo"><strong id="ammo">30</strong><span id="weapon-name"></span><div class="fine" id="fps"></div></div>
-    <div class="abilities">
-      <div class="ability" id="tac"><span id="tac-name"></span><div class="cd hidden" id="tac-cd"></div></div>
-      <div class="ability ult" id="ult"><span id="ult-name"></span><div class="cd hidden" id="ult-cd"></div></div>
+    <div class="playerbar">
+      <div class="vitals">
+        <div class="vital-top">
+          <span class="team-pip" id="team-pip"></span>
+          <span class="callsign" id="callsign"></span>
+          <span class="hp" id="hp">100</span>
+        </div>
+        <div class="bar hp"><span id="hp-bar" style="width:100%"></span></div>
+        <div class="sub" id="armor-line"></div>
+        <div class="sub" id="status-line"></div>
+      </div>
+      <div class="abilities">
+        <div class="ability" id="tac"><span class="key" id="tac-key">Q</span><span id="tac-name"></span><div class="cd hidden" id="tac-cd"></div></div>
+        <div class="ability ult" id="ult"><span class="key" id="ult-key">Z</span><span id="ult-name"></span><div class="cd hidden" id="ult-cd"></div></div>
+      </div>
+      <div class="ammo" id="ammo-panel">
+        <div class="ammo-row"><strong id="ammo">30</strong><em id="ammo-reserve">/ 120</em></div>
+        <span id="weapon-name"></span>
+        <div class="reload-line hidden" id="reload-line"></div>
+        <div class="fine" id="fps"></div>
+      </div>
     </div>
     <div class="cross cross" id="cross"><i></i><i></i><i></i><i></i></div>
+    <div class="hitmark" id="hitmark" hidden><i></i><i></i></div>
+    <div class="floaters" id="floaters"></div>
     <div class="prompt hidden" id="prompt"></div>
     <div class="banner hidden" id="banner"></div>
     <div class="chatlog" id="chatlog"></div>
@@ -741,12 +766,27 @@ export function renderHUD(game) {
   `;
 }
 
+function feedLine(game, f) {
+  if (!f || typeof f === 'string') return `<div class="kf">${esc(f || '')}</div>`;
+  const kc = f.killerTeam === 'b' ? 'tb' : f.killerTeam === 'a' ? 'ta' : 'ff';
+  const vc = f.victimTeam === 'b' ? 'tb' : f.victimTeam === 'a' ? 'ta' : 'ff';
+  const hs = f.headshot ? `<em class="hs">${esc(game.t('hud.headshot'))}</em>` : '';
+  return `<div class="kf${f.you ? ' you' : ''}"><b class="${kc}">${esc(f.killer || '—')}</b><span class="sep">›</span><b class="${vc}">${esc(f.victim || '')}</b>${hs}<span class="wpn">${esc(f.weapon || '')}</span></div>`;
+}
+
 export function updateHUD(game, player, match) {
   if (!player || !match) return;
   const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
   set('hp', player.alive ? String(Math.ceil(player.hp)) : game.t('hud.down'));
+  set('callsign', player.name || game.t('hud.you'));
+  const pip = document.getElementById('team-pip');
+  if (pip) pip.className = `team-pip ${player.team === 'b' ? 'tb' : player.team === 'a' ? 'ta' : 'ff'}`;
   const bar = document.getElementById('hp-bar');
-  if (bar) bar.style.width = `${Math.max(0, (player.hp / (player.maxHp || 100)) * 100)}%`;
+  const pct = Math.max(0, (player.hp / (player.maxHp || 100)) * 100);
+  if (bar) {
+    bar.style.width = `${pct}%`;
+    bar.classList.toggle('low', player.alive && pct < 30);
+  }
   set('armor-line', player.armor > 0 ? `${game.t('hud.armor')} ${Math.ceil(player.armor)}` : (player.carrying ? game.t('hud.carry') : ''));
   const st = [];
   if (player.reloading) st.push(game.t('hud.reload'));
@@ -807,7 +847,39 @@ export function updateHUD(game, player, match) {
     }).join('');
   }
   const feed = document.getElementById('feed');
-  if (feed) feed.innerHTML = (game.feed || []).slice(-5).map((f) => `<div>${esc(f)}</div>`).join('');
+  if (feed) {
+    const lines = (game.feed || []).slice(-5);
+    const sig = lines.map((f) => (typeof f === 'string' ? f : `${f.killer}|${f.victim}|${f.weapon}|${f.headshot}|${f.you}|${f.killerTeam}|${f.victimTeam}`)).join('\n');
+    if (feed.dataset.sig !== sig) {
+      feed.dataset.sig = sig;
+      feed.innerHTML = lines.map((f) => feedLine(game, f)).join('');
+    }
+  }
+  const mark = document.getElementById('hitmark');
+  if (mark) {
+    const on = (game.hitPulse || 0) > 0;
+    mark.hidden = !on;
+    mark.classList.toggle('head', !!game.hitHead);
+    const seq = String(game.hitSeq || 0);
+    if (on && mark.dataset.seq !== seq) {
+      mark.dataset.seq = seq;
+      mark.classList.remove('pop');
+      void mark.offsetWidth;
+      mark.classList.add('pop');
+    }
+  }
+  const floaters = document.getElementById('floaters');
+  if (floaters) {
+    const project = game.view?.project;
+    floaters.innerHTML = (game.floaters || []).map((f) => {
+      if (!project) return '';
+      const p = project(f);
+      if (!p || p.z > 1) return '';
+      const x = (p.x * 0.5 + 0.5) * 100;
+      const y = (-p.y * 0.5 + 0.5) * 100;
+      return `<span class="${f.head ? 'hs' : ''}" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;opacity:${Math.max(0, f.life / 0.72).toFixed(2)}">${esc(f.amount)}</span>`;
+    }).join('');
+  }
   const log = document.getElementById('chatlog');
   if (log) log.innerHTML = (game.chat || []).slice(-6).map((c) => `<div><b>${esc(c.name)}</b> ${esc(c.text)}</div>`).join('');
   const prompt = document.getElementById('prompt');

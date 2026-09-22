@@ -60,6 +60,16 @@ test('fire with the melee slot equipped swings the weapon', () => {
   assert.ok(consumeEvents(m).some(e => e.type === 'melee'));
 });
 
+test('an empty magazine reloads without the reload key', () => {
+  const { m, p } = fixture();
+  p.weapons[0].mag = 0;
+  p.input.reload = false;
+  p.input.fire = true;
+  stepWeapons(m, p, 1 / 60);
+  assert.equal(p.reloading, true);
+  assert.equal(p.weapons[0].mag, 0);
+});
+
 test('switching weapons resolves reload state from the new slot', () => {
   const { m, p } = fixture();
   p.weapons[0].mag = 0; // Old gun needs reload, new gun does not.

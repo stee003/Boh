@@ -99,12 +99,19 @@ function menuBgTexture() {
 
 export function teamPalette(mode = 'off') {
   const sets = {
-    off: { a: '#2ec8ff', b: '#ff5a3c', self: '#5cffd6', enemy: '#ff5a3c' },
+    off: { a: '#2ec8ff', b: '#ff5a3c', self: '#5cffd6', enemy: '#ffb03a' },
     deutan: { a: '#3d8bff', b: '#ffb000', self: '#7af0ff', enemy: '#ffb000' },
     protan: { a: '#4aa3ff', b: '#ffe14a', self: '#9ad7ff', enemy: '#ffe14a' },
     tritan: { a: '#ff5a7a', b: '#3dffe8', self: '#ff8ad4', enemy: '#3dffe8' },
   };
   return sets[mode] || sets.off;
+}
+
+function teamHex(player, palette) {
+  const pal = palette || {};
+  if (player?.team === 'b') return pal.b || '#ff5a3c';
+  if (player?.team === 'ffa') return pal.enemy || '#ffb03a';
+  return pal.a || '#2ec8ff';
 }
 
 function matFor(map, name, visual) {
@@ -411,9 +418,15 @@ export function createView(canvas) {
       attachWeapon(view, opts.weaponId);
       view.equip = 1;
     }
-    view.bodyYaw = dampAngle(view.bodyYaw, player.yaw || 0, 16, dt);
+    let face = player.yaw || 0;
+    const spd = Math.hypot(player.vx || 0, player.vz || 0);
+    if (player.alive && !player.aiming && !player.dodging && spd > 1.8 && (player.vaultT || 0) <= 0) {
+      face = Math.atan2(player.vx, -(player.vz || 0.0001));
+    }
+    view.bodyYaw = dampAngle(view.bodyYaw, face, player.aiming ? 18 : 11, dt);
     g.rotation.set(0, Math.PI - view.bodyYaw, 0);
-    view.upper.rotation.y = -shortest(view.bodyYaw, player.yaw || 0);
+    const twist = Math.max(-1.15, Math.min(1.15, shortest(view.bodyYaw, player.yaw || 0)));
+    view.upper.rotation.y = -twist;
     view.phase += dt;
     const pose = animatePose(view.animation, player, dt);
     view.hips.position.y = pose.height;
@@ -446,28 +459,21 @@ export function createView(canvas) {
       view.drone.position.y = view.droneBaseY + Math.sin(view.phase * 1.7) * 0.03;
       view.drone.rotation.y = view.phase * 0.8;
     }
-    const accent = player.id === opts.localId ? state.palette.self : (player.team === 'b' ? state.palette.b : state.palette.a);
-    view.visor.material.emissive = hex(accent);
-    view.visor.material.color = hex(accent);
-    // Damage flash: briefly turn armor emissive red while the sim says "flashed".
-    const flashing = !!player.flashed;
-    if (flashing !== view.wasFlashed) {
-      view.group.traverse((o) => {
-        if (!o.isMesh || !o.material?.emissive) return;
-        if (o === view.visor) return;
-        if (flashing) {
-          o.userData.baseEmissive = o.material.emissive.getHex();
-          o.userData.baseIntensity = o.material.emissiveIntensity;
-          o.material.emissive.set('#ff4a3a');
-          o.material.emissiveIntensity = 0.55;
-        } else if (o.userData.baseEmissive != null) {
-          o.material.emissive.setHex(o.userData.baseEmissive);
-          if (o.userData.baseIntensity != null) o.material.emissiveIntensity = o.userData.baseIntensity;
-          delete o.userData.baseEmissive;
-          delete o.userData.baseIntensity;
-        }
-      });
-      view.wasFlashed = flashing;
+    const accent = teamHex(player, state.palette);
+    if (view.visor?.material) {
+      view.visor.material.emissive.set(accent);
+      view.visor.material.color.set(accent);
+    }
+    if (view.teamMat) {
+      view.teamMat.color.set(accent);
+      view.teamMat.emissive.set(accent);
+      view.teamMat.emissiveIntensity = player.flashed ? 1.65 : 0.95;
+    }
+    if (view.selfRing) view.selfRing.visible = player.id === opts.localId && !!player.alive;
+    if (view.hitShell) {
+      const on = !!player.flashed;
+      view.hitShell.visible = on;
+      view.hitShell.material.opacity = on ? 0.32 : 0;
     }
     return view;
   }
@@ -781,17 +787,23 @@ export function createView(canvas) {
     }
     for (const p of players) {
       if (!p.alive) continue;
-      ctx.fillStyle = p.id === local?.id ? '#5cffd6' : (p.team === 'b' ? '#ff5a3c' : '#2ec8ff');
+      ctx.fillStyle = p.id === local?.id ? (state.palette.self || '#5cffd6') : teamHex(p, state.palette);
       ctx.beginPath();
       ctx.arc(X(p.x), Z(p.z), p.id === local?.id ? 3.2 : 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
+  function project(point) {
+    const v = new THREE.Vector3(point.x, point.y, point.z);
+    v.project(camera);
+    return { x: v.x, y: v.y, z: v.z };
+  }
+
   return {
     state, resize, setQuality, buildMap, clearMap, syncBoxes, updateActor, dropMissing,
     shot, tracer, impact, ring, tickFx, frameCamera, frameFree, menuStage, setShowcase, tickMenu, render, minimap, syncWorld,
-    camera, scene,
+    camera, scene, project,
   };
 }
 
@@ -890,11 +902,15 @@ function buildActor(player, palette) {
   const shoulderL = v.shoulders?.[0] ?? 1;
   const shoulderR = v.shoulders?.[1] ?? 1;
 
-  const cloth = new THREE.MeshStandardMaterial({ color: shade(accent, 0.3), roughness: 0.55, metalness: 0.16 });
+  const teamColor = teamHex(player, palette);
+  const clothCol = shade(accent, 0.3);
+  clothCol.lerp(hex(teamColor), 0.18);
+  const cloth = new THREE.MeshStandardMaterial({ color: clothCol, roughness: 0.55, metalness: 0.16 });
   const clothDark = new THREE.MeshStandardMaterial({ color: shade(accent, 0.2), roughness: 0.66, metalness: 0.12 });
   const dark = new THREE.MeshStandardMaterial({ color: '#141820', roughness: 0.42, metalness: 0.52 });
-  const accentMat = new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.7, roughness: 0.3, metalness: 0.2 });
-  const visorMat = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.85, roughness: 0.25, metalness: 0.3 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.45, roughness: 0.3, metalness: 0.2 });
+  const visorMat = new THREE.MeshStandardMaterial({ color: teamColor, emissive: teamColor, emissiveIntensity: 0.85, roughness: 0.25, metalness: 0.3 });
+  const teamMat = new THREE.MeshStandardMaterial({ color: teamColor, emissive: teamColor, emissiveIntensity: 0.95, roughness: 0.32, metalness: 0.18 });
 
   const group = new THREE.Group();
   const hips = new THREE.Group();
@@ -941,6 +957,9 @@ function buildActor(player, palette) {
     visor = new THREE.Mesh(xform(SPH(1, 20, 8), { sx: 0.11, sy: 0.032, sz: 0.065, y: 0.008, z: 0.102 }), visorMat);
   }
   head.add(...bakedMeshes(headB), visor);
+  const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.05, 0), teamMat);
+  marker.position.set(0, 0.26, 0);
+  head.add(marker);
   head.userData.visor = visor;
   if (v.antenna) {
     const ant = new THREE.Group();
@@ -1035,9 +1054,35 @@ function buildActor(player, palette) {
   for (const m of bakedMeshes(backB)) upper.add(m);
   if (drone) upper.add(drone);
 
-  upper.add(head, armL, armR);
+  const padL = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.14, 2, 6), teamMat);
+  padL.rotation.z = Math.PI / 2;
+  padL.position.set(-0.34, 0.5, 0.02);
+  const padR = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.14, 2, 6), teamMat);
+  padR.rotation.z = Math.PI / 2;
+  padR.position.set(0.34, 0.5, 0.06);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.26 * bulk, 0.045, 0.018), teamMat);
+  stripe.position.set(0, 0.22, 0.175);
+  const backMark = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.018), teamMat);
+  backMark.position.set(0, 0.34, -0.2);
+  backMark.rotation.z = Math.PI / 4;
+  upper.add(head, armL, armR, padL, padR, stripe, backMark);
   hips.add(upper, legL, legR);
   group.add(hips);
+  const selfRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.42, 0.52, 28),
+    new THREE.MeshBasicMaterial({ color: palette?.self || '#5cffd6', side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false }),
+  );
+  selfRing.rotation.x = -Math.PI / 2;
+  selfRing.position.y = 0.04;
+  selfRing.visible = false;
+  const hitShell = new THREE.Mesh(
+    new THREE.SphereGeometry(0.52, 10, 8),
+    new THREE.MeshBasicMaterial({ color: '#ff4a3a', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }),
+  );
+  hitShell.position.y = 0.95;
+  hitShell.scale.set(0.72, 1.2, 0.72);
+  hitShell.visible = false;
+  group.add(selfRing, hitShell);
 
   const flash = new THREE.Group();
   const flashMat = new THREE.MeshBasicMaterial({
