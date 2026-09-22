@@ -283,7 +283,8 @@ export function mountUI(root, game) {
     else if (act === 'kit') g.pickKit(Number(el.dataset.i));
     else if (act === 'buy') g.buyCosmetic(el.dataset.id);
     else if (act === 'equip-cos') g.equipCosmetic(el.dataset.slot, el.dataset.id);
-    else if (act === 'mode') { g.draft.modeId = el.dataset.id; renderPanel(g); }
+    else if (act === 'mode') { g.draft.modeId = el.dataset.id; g.modeInfoId = null; renderPanel(g); }
+    else if (act === 'mode-info') { g.modeInfoId = g.modeInfoId === el.dataset.id ? null : el.dataset.id; renderPanel(g); }
     else if (act === 'map') { g.draft.mapId = el.dataset.id; renderPanel(g); }
     else if (act === 'diff') { g.draft.difficulty = el.dataset.id; renderPanel(g); }
     else if (act === 'team') { g.draft.team = el.dataset.id; renderPanel(g); }
@@ -319,6 +320,12 @@ export function mountUI(root, game) {
   root.addEventListener('change', (e) => {
     if (e.target.dataset.setting) game.readSettingsFromDom();
     if (e.target.id === 'import-file') game.importProfile(e.target.files?.[0]);
+  });
+  // Keyboard activation for the in-card info buttons (they are role=button spans, not <button>).
+  root.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target.closest?.('[data-act="mode-info"][role="button"]');
+    if (el) { e.preventDefault(); el.click(); }
   });
   game.screen = game.screen || 'play';
   game.draft = game.draft || {
@@ -397,14 +404,21 @@ function renderPanel(game) {
   }
 }
 
-function playScreen(game) {
+export function playScreen(game) {
   const d = game.draft;
   const modes = MODES.filter((m) => !m.practice);
   const maps = MAPS.filter((m) => m.combat);
   const selected = modes.find((m) => m.id === d.modeId) || modes[0];
+  const infoMode = modes.find((m) => m.id === game.modeInfoId) || null;
+  // Small info button on the right of every mode row: hover (or focus) opens a
+  // brief tooltip, click pins the explanation in the line under the grid.
+  const infoButton = (m) => `<span class="mode-info${game.modeInfoId === m.id ? ' pinned' : ''}" role="button" tabindex="0" aria-expanded="${game.modeInfoId === m.id}" aria-label="${esc(game.t(m.nameKey) + ' · ' + game.t('menu.mode_info'))}" data-act="mode-info" data-id="${m.id}">i<span class="mode-info-tip"><strong>${esc(game.t(m.nameKey))}</strong><span>${esc(game.t('mode.' + m.id + '.how'))}</span></span></span>`;
+  const description = infoMode
+    ? `<p class="fine mode-description"><span class="mode-info-line"><strong>${esc(game.t(infoMode.nameKey))} — ${esc(game.t('menu.mode_info'))}:</strong> ${esc(game.t('mode.' + infoMode.id + '.how'))}<button class="mode-info-close" data-act="mode-info" data-id="${infoMode.id}" aria-label="${esc(game.t('menu.close'))}">✕</button></span></p>`
+    : `<p class="fine mode-description">${esc(game.t(selected.descKey))}</p>`;
   return `<div class="play-heading"><p class="kicker">01 / ${esc(game.t('menu.play'))}</p><h2>${esc(game.t('home.setup'))}</h2><p class="lead">${esc(game.t('home.setup_hint'))}</p></div>
     <section class="setup-section"><h3>${esc(game.t('play.mode'))}</h3>
-    <div class="mode-grid">${modes.map((m, i) => `<button class="mode-card ${m.id === d.modeId ? 'on' : ''}" data-act="mode" data-id="${m.id}" aria-pressed="${m.id === d.modeId}"><span class="mode-ico">${modeIcon(m.id)}</span><span class="mode-txt"><span class="mode-index">${String(i + 1).padStart(2, '0')}</span><strong>${esc(game.t(m.nameKey))}</strong></span><span class="mode-check">${m.id === d.modeId ? '●' : '○'}</span></button>`).join('')}</div><p class="fine mode-description">${esc(game.t(selected.descKey))}</p></section>
+    <div class="mode-grid">${modes.map((m, i) => `<button class="mode-card ${m.id === d.modeId ? 'on' : ''}" data-act="mode" data-id="${m.id}" aria-pressed="${m.id === d.modeId}"><span class="mode-ico">${modeIcon(m.id)}</span><span class="mode-txt"><span class="mode-index">${String(i + 1).padStart(2, '0')}</span><strong>${esc(game.t(m.nameKey))}</strong></span>${infoButton(m)}<span class="mode-check">${m.id === d.modeId ? '●' : '○'}</span></button>`).join('')}</div>${description}</section>
     <section class="setup-section"><h3>${esc(game.t('play.map'))}</h3><div class="map-grid">
       <button class="map-card ${d.mapId === 'random' ? 'on' : ''}" data-act="map" data-id="random" aria-pressed="${d.mapId === 'random'}"><span class="map-thumb random"><svg viewBox="0 0 96 96" aria-hidden="true"><path d="M20 30h24M20 30l10-10M20 30l10 10M76 66H52M76 66L66 56M76 66l-10 10M62 26l-28 44" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span><strong>${esc(game.t('play.random'))}</strong></button>
       ${maps.map((m) => `<button class="map-card ${d.mapId === m.id ? 'on' : ''}" data-act="map" data-id="${m.id}" aria-pressed="${d.mapId === m.id}">${mapThumb(m)}<strong>${esc(game.t(m.nameKey))}</strong></button>`).join('')}</div></section>

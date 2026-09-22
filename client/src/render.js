@@ -855,15 +855,22 @@ function xform(geo, o = {}) {
 // Merge-safe: RoundedBoxGeometry is non-indexed, primitives are indexed.
 const norm = (g) => (g.index ? g.toNonIndexed() : g);
 // Push a primitive into a per-material bucket for later merging.
+// NOTE: bucket by the material's uuid — a material used as a plain-object key
+// stringifies to "[object Object]", which silently merges every limb into one
+// geometry and hands the renderer a string "material" (the body then throws
+// mid-frame and only the weapon, drawn earlier in Z order, stays visible).
 function put(buckets, mat, geo, o) {
-  (buckets[mat] ||= []).push(norm(xform(geo, o)));
+  const key = mat.uuid;
+  if (!buckets[key]) buckets[key] = { mat, geos: [] };
+  buckets[key].geos.push(norm(xform(geo, o)));
 }
 function bakedMeshes(buckets) {
   const out = [];
-  for (const [mat, geos] of Object.entries(buckets)) {
-    if (!geos.length) continue;
+  for (const entry of Object.values(buckets)) {
+    if (!entry.geos.length) continue;
+    const geos = entry.geos;
     const merged = geos.length === 1 ? geos[0] : mergeGeoParts(geos, false);
-    const m = new THREE.Mesh(merged, mat);
+    const m = new THREE.Mesh(merged, entry.mat);
     m.castShadow = true;
     out.push(m);
   }

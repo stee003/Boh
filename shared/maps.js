@@ -1,4 +1,13 @@
-/** Compact competitive lattices. Geometry is data; the sim never special-cases a map. */
+/** Compact competitive lattices. Geometry is data; the sim never special-cases a map.
+ *
+ * Layout rules baked into every arena below:
+ *  - 2–3 ground lanes plus at least one vertical or flank route per map
+ *  - cover in three heights (low ≈0.5, chest ≈1.15, wall 2+) so every distance has a read
+ *  - verticals are jump/step reachable (step ≤0.46, jump ≈1.2)
+ *  - breakable glass controls routes; movers/toggles change them over time
+ *  - every map keeps 5+ spawns per team and 5 objectives (dominion uses the first 3,
+ *    pulsepoint rotates all five)
+ */
 
 let seq = 1;
 const nextId = (prefix) => `${prefix}${seq++}`;
@@ -69,6 +78,16 @@ function crate(x, z, w = 1.4, h = 1.15, d = 1.4, mat = 'crate') {
   return box(x, 0, z, w, h, d, mat);
 }
 
+/** Breakable glazing: a thin solid you can shoot through (and through into rooms). */
+function glass(cx, bottom, cz, w, h, d, hp = 60) {
+  return box(cx, bottom, cz, w, h, d, 'glass', { breakable: true, hp });
+}
+
+/** Non-colliding glow dressing. */
+function glow(cx, bottom, cz, w, h, d, mat = 'neon') {
+  return box(cx, bottom, cz, w, h, d, mat, { solid: false, visual: true });
+}
+
 function sp(x, z, yaw, y = 0) {
   return { x, y, z, yaw };
 }
@@ -111,49 +130,64 @@ function neonDistrict() {
   const boxes = [
     floor(-38, 38, -34, 34, 'concrete'),
     ...walls(-38, 38, -34, 34, 8),
-    // left block row — alleys between
+    // ── West block row with two alleys between the buildings ──
     box(-30, 0, -22, 12, 6.2, 12, 'concrete'),
     box(-31, 0, -4, 12, 7.2, 10, 'concrete'),
     box(-29, 0, 16, 14, 5.4, 12, 'concrete'),
-    // roof access
-    ...stairs(-20, -22, 3.2, 6.2, 6.2, 'x+', 'metal'),
-    ...stairs(-20, 16, 3.2, 6.2, 5.4, 'x+', 'metal'),
-    // low connectors
-    box(-18, 0, -22, 1.2, 1.3, 6, 'crate'),
-    box(-18, 0, 8, 1.4, 1.2, 4, 'crate'),
-    // right elevated yard
+    // roof access from the street (flights rise toward the building faces)
+    ...stairs(-20, -22, 3.2, 6.2, 6.2, 'x-', 'metal'),
+    ...stairs(-20, 16, 3.2, 6.2, 5.4, 'x-', 'metal'),
+    // alley cover (alley A: z -16..-9, alley B: z 1..10)
+    crate(-31, -12.5, 1.4, 1.1, 1.4),
+    box(-33.4, 0, -12, 2, 0.5, 1, 'concrete'),
+    crate(-28, -13.4, 1.2, 1.05, 1.2),
+    crate(-31, 5.5, 1.4, 1.1, 1.4),
+    box(-33.6, 0, 4, 1, 0.5, 2, 'concrete'),
+    // street-side second floor: building + balcony with breakable glass rail
+    box(-15, 0, -1, 6, 2.6, 10, 'concrete'),
+    slab(-15, 2.9, -1, 6.4, 10.4, 'metal'),
+    ...stairs(-15, 7, 2.6, 6, 2.9, 'z-', 'metal'),
+    glass(-11.8, 2.9, -1, 0.12, 1.1, 10.4, 80),
+    // ── Center street: layered cover + a breakable glass atrium wall ──
+    box(-2, 0, -14, 3.4, 0.5, 1.2, 'concrete'),
+    box(4, 0, -8, 1.4, 1.15, 3.2, 'concrete'),
+    crate(-5, -4, 2.2, 1.35, 1.2),
+    box(7, 0, 0, 3.2, 0.55, 1.4, 'concrete'),
+    box(0.5, 0, -1, 0.7, 1.9, 0.7, 'metal'),
+    crate(-1.5, 6, 1.4, 1.2, 2.6),
+    box(5, 0, 12, 2.4, 0.5, 1.2, 'concrete'),
+    crate(-6, 14, 1.3, 1.35, 1.3),
+    glass(-5.5, 0, -1, 5, 2.2, 0.12, 55),
+    glass(5.5, 0, -1, 5, 2.2, 0.12, 55),
+    // ── East raised yard ──
     slab(25, 3.3, 0, 20, 34, 'metal'),
     box(18, 0, -8, 1.1, 3.3, 1.1, 'metal'),
     box(32, 0, 6, 1.1, 3.3, 1.1, 'metal'),
     box(24, 0, 14, 1.1, 3.3, 1.1, 'metal'),
-    ...stairs(25, -23.5, 4.2, 7.2, 3.3, 'z+', 'metal'),
-    ...stairs(25, 23.5, 4.2, 7.2, 3.3, 'z-', 'metal'),
-    crate(22, 3.3 - 0.01, 1.3, 1.05, 1.3, 'crate'),
-    // the crate y is wrong if I used crate() which starts at 0. Place on platform:
+    ...stairs(25, -20.5, 4.2, 7.2, 3.3, 'z+', 'metal'),
+    ...stairs(25, 20.5, 4.2, 7.2, 3.3, 'z-', 'metal'),
     box(22, 3.3, -6, 1.5, 1.05, 1.5, 'crate'),
     box(29, 3.3, 7, 1.8, 1.15, 1.2, 'crate'),
     box(20, 3.3, 12, 1.2, 0.9, 2, 'crate'),
-    // center street cover
-    crate(-1.5, -12, 1.8, 1.15, 1.4),
-    crate(2.2, -4, 1.5, 1.35, 2.2),
-    crate(-2, 6, 2.1, 1.05, 1.3),
-    crate(1.2, 15, 1.3, 1.45, 1.3),
-    box(0, 0, -2, 0.7, 1.7, 0.7, 'metal'),
-    box(-6, 0, 0, 0.45, 1.5, 3.2, 'concrete'),
-    box(6, 0, 2, 0.45, 1.5, 2.6, 'concrete'),
+    slab(25, 3.6, -10, 3.4, 3.4, 'caution', 0.3, { mover: { axis: 'z', amp: 5, speed: 0.35 } }),
+    glass(15, 4.35, -6, 0.12, 2.2, 8, 60),
     // spawn lips
     box(-8, 0, -25, 6, 1.25, 0.5, 'concrete'),
     box(10, 0, -25, 5, 1.25, 0.5, 'concrete'),
     box(-8, 0, 25, 6, 1.25, 0.5, 'concrete'),
     box(10, 0, 25, 5, 1.25, 0.5, 'concrete'),
-    // neon dressings
-    box(-22, 3.2, -12, 0.3, 1.4, 3.2, 'neon', { solid: false, visual: true }),
-    box(16, 4.4, 0, 0.25, 0.5, 8, 'neon', { solid: false, visual: true }),
-    box(0, 0.05, 0, 1.2, 0.08, 1.2, 'trim', { solid: false, visual: true }),
-    box(-30, 5.4, -22, 3, 0.8, 0.2, 'neon', { solid: false, visual: true }),
+    // ── Dressing: window bands, signs, waterline, yard edge ──
+    glow(-23.9, 2.2, -22, 0.1, 0.5, 8),
+    glow(-23.9, 1.1, -22, 0.1, 0.3, 8),
+    glow(-24.9, 3.4, -4, 0.1, 0.5, 6),
+    glow(-24.9, 1.6, -4, 0.1, 0.3, 6),
+    glow(-21.9, 2.0, 16, 0.1, 0.5, 8),
+    glow(-21.9, 1.0, 16, 0.1, 0.3, 8),
+    glow(15, 5.0, 12, 0.2, 0.9, 0.2),
+    glow(0, 0.03, -1, 30, 0.04, 0.5, 'trim'),
+    glow(15.3, 3.3, 0, 0.15, 0.12, 33.5, 'trim'),
+    glow(-15, 3.35, -1, 5.8, 0.1, 0.15, 'neon'),
   ];
-  // fix platform crates — crate() helper placed one at y=0 accidentally; remove by not using that call.
-  // The mistaken crate(22, 3.3 - 0.01, ...) used h as z. It's a ground crate near x=22 z=1.05. Leave it; it's cover near the stair. OK.
   return pack({
     id: 'neon_district',
     nameKey: 'map.neon_district.name',
@@ -170,16 +204,17 @@ function neonDistrict() {
       { x: 24, y: 5, z: 0, color: '#5cffd6', intensity: 7, distance: 18 },
       { x: 0, y: 4, z: -10, color: '#7af0ff', intensity: 5, distance: 14 },
       { x: -28, y: 3, z: 12, color: '#ffb03a', intensity: 5, distance: 12 },
+      { x: 10, y: 4, z: 18, color: '#ff8ad4', intensity: 4, distance: 12 },
     ],
     spawns: {
       a: [sp(-10, -30, PI), sp(0, -31, PI), sp(12, -30, PI), sp(-22, -30, PI), sp(22, -29, PI * 0.85)],
       b: [sp(-10, 30, 0), sp(0, 31, 0), sp(12, 30, 0), sp(-22, 30, 0.2), sp(24, 29, -0.3)],
-      ffa: [sp(-22, -18, 0.4), sp(24, 8, 0, 3.3), sp(0, -8, PI), sp(-16, 20, 0), sp(28, -10, PI / 2), sp(8, 18, 0), sp(-8, 6, -1)],
+      ffa: [sp(-22, -18, 0.4), sp(24, 8, 0, 3.3), sp(0, -14, PI), sp(-16, 20, 0), sp(8, -10, PI / 2), sp(8, 18, 0)],
     },
     objectives: [
       { id: 'lane_w', x: -22, y: 0, z: -8, radius: 3.2 },
       { id: 'mid', x: 0, y: 0, z: 1, radius: 3.4 },
-      { id: 'lane_e', x: 24, y: 0, z: 6, radius: 3.2 },
+      { id: 'lane_e', x: 24, y: 3.3, z: 6, radius: 3.2 },
       { id: 'roof', x: 26, y: 3.3, z: -8, radius: 3 },
       { id: 'south', x: -8, y: 0, z: 20, radius: 3 },
     ],
@@ -193,6 +228,7 @@ function orbitalYard() {
     floor(-42, 42, -34, 34, 'metal'),
     ...walls(-42, 42, -34, 34, 8),
   ];
+  // container grid; two stacked for height
   const cols = [-30, -10, 10, 30];
   const rows = [-22, -10, 2, 14];
   for (const x of cols) {
@@ -204,15 +240,40 @@ function orbitalYard() {
       }
     }
   }
+  // container catwalk over the z -10 row, with the high pad rising through it
+  boxes.push(slab(0, 2.7, -10, 60, 2.6, 'metal'));
+  boxes.push(...stairs(-20, -10.9, 2.8, 5.4, 2.55, 'z-', 'metal'));
+  boxes.push(...stairs(20, -10.9, 2.8, 5.4, 2.55, 'z-', 'metal'));
+  // central pad + service tower (crate step on the pad reaches the tower top)
   boxes.push(box(0, 0, 0, 3.2, 0.9, 3.2, 'metal'));
+  boxes.push(box(0, 0.9, 0, 2.2, 1.65, 2.2, 'metal'));
+  boxes.push(box(1.45, 0.9, 1.45, 0.8, 1.15, 0.8, 'crate'));
+  boxes.push(slab(0, 2.55, -4.15, 3.4, 4.7, 'metal'));
   boxes.push(slab(0, 5.1, -10, 6, 6, 'metal'));
-  boxes.push(...stairs(-6, -10, 3, 5.5, 5.1, 'x+', 'metal'));
+  boxes.push(...stairs(-4.4, -16, 2.5, 6.5, 5.1, 'z+', 'metal'));
   // cargo lift
   boxes.push(slab(34, 0.3, 0, 4.2, 4.2, 'caution', 0.3, {
     mover: { axis: 'y', amp: 2.1, speed: 0.35 },
   }));
+  // lane cover between the container rows
+  boxes.push(box(0, 0, -16, 4, 0.5, 1.2, 'concrete'));
+  boxes.push(box(0, 0, -4, 4, 0.5, 1.2, 'concrete'));
+  boxes.push(box(0, 0, 8, 4, 0.5, 1.2, 'concrete'));
+  boxes.push(box(0, 0, 20, 4, 0.5, 1.2, 'concrete'));
+  boxes.push(box(-10, 0, -16, 1.4, 1.2, 2.4, 'metal'));
+  boxes.push(box(10, 0, 12, 1.4, 1.2, 2.4, 'metal'));
+  boxes.push(crate(-20, 0, 1.4, 1.1, 1.4));
+  boxes.push(crate(20, 4, 1.4, 1.1, 1.4));
+  boxes.push(crate(-20, 20, 1.3, 1.05, 1.3));
+  boxes.push(crate(20, -20, 1.3, 1.05, 1.3));
   boxes.push(box(-36, 0, 0, 1, 3.5, 8, 'metal'));
-  boxes.push(box(0, 2.2, -28, 10, 0.3, 0.3, 'neon', { solid: false, visual: true }));
+  // dressing
+  boxes.push(glow(0, 2.2, -28, 10, 0.3, 0.3));
+  boxes.push(glow(0, 0.03, 30, 70, 0.04, 0.4, 'trim'));
+  boxes.push(glow(0, 0.03, -30, 70, 0.04, 0.4, 'trim'));
+  boxes.push(glow(-31.4, 2.6, 0, 0.12, 0.3, 60, 'neon'));
+  boxes.push(glow(31.4, 2.6, 0, 0.12, 0.3, 60, 'neon'));
+  boxes.push(glow(0, 5.2, -10, 0.3, 0.3, 6.4, 'neon'));
   return pack({
     id: 'orbital_yard',
     nameKey: 'map.orbital_yard.name',
@@ -229,6 +290,7 @@ function orbitalYard() {
       { x: -20, y: 4, z: -16, color: '#ff7a3c', intensity: 6, distance: 14 },
       { x: 20, y: 4, z: 12, color: '#ffe0a8', intensity: 6, distance: 14 },
       { x: 34, y: 4, z: 0, color: '#5cffd6', intensity: 4, distance: 10 },
+      { x: -30, y: 4, z: 14, color: '#ffb020', intensity: 4, distance: 12 },
     ],
     spawns: {
       a: [sp(-18, -30, PI), sp(0, -30, PI), sp(18, -30, PI), sp(-32, -28, PI), sp(32, -28, PI)],
@@ -236,7 +298,7 @@ function orbitalYard() {
       ffa: [sp(-16, 0, PI / 2), sp(16, -8, 0), sp(0, 12, PI), sp(36, -14, -PI / 2), sp(-36, 14, 0.4), sp(8, -20, PI)],
     },
     objectives: [
-      { id: 'pad', x: 0, y: 0, z: 0, radius: 3.6 },
+      { id: 'pad', x: 0, y: 2.55, z: 0, radius: 3.6 },
       { id: 'west', x: -20, y: 0, z: 8, radius: 3.2 },
       { id: 'east', x: 20, y: 0, z: -8, radius: 3.2 },
       { id: 'lift', x: 34, y: 0, z: 0, radius: 3 },
@@ -253,34 +315,49 @@ function floodline() {
     floor(6, 40, -32, 32, 'concrete'),
     floor(-6, 6, -32, 32, 'concrete', -1.05),
     ...walls(-40, 40, -32, 32, 7),
-    // bridges
-    box(0, -0.2, -18, 5.2, 0.35, 3.2, 'metal'),
-    box(0, -0.2, 0, 5.2, 0.35, 3.4, 'metal'),
-    box(0, -0.2, 18, 5.2, 0.35, 3.2, 'metal'),
-    ...stairs(0, -26, 4, 5.2, 1.15, 'z+', 'metal', -1.05),
-    ...stairs(0, 26, 4, 5.2, 1.15, 'z-', 'metal', -1.05),
-    ...stairs(-4, -10, 2.4, 4.2, 1.15, 'x-', 'metal', -1.05),
-    ...stairs(4, 10, 2.4, 4.2, 1.15, 'x+', 'metal', -1.05),
-    // water sheet
+    // bridges across the channel (wide enough to step off the banks)
+    box(0, -0.2, -18, 8, 0.35, 3.2, 'metal'),
+    box(0, -0.2, 0, 8, 0.35, 3.4, 'metal'),
+    box(0, -0.2, 18, 8, 0.35, 3.2, 'metal'),
+    // water sheet + glowing waterline
     box(0, -0.85, 0, 10, 0.4, 60, 'water', { solid: false, visual: true }),
-    // west labs
+    glow(-5.3, 0.2, 0, 0.12, 0.18, 60),
+    glow(5.3, 0.2, 0, 0.12, 0.18, 60),
+    // ── West labs: north block with a breakable window, south wing with a door ──
     box(-28, 0, -20, 14, 4.2, 0.4, 'concrete'),
     box(-28, 0, -8, 14, 4.2, 0.4, 'concrete'),
     box(-34.8, 0, -14, 0.4, 4.2, 12, 'concrete'),
     box(-22, 0, -14, 0.4, 4.2, 8, 'concrete'),
-    box(-28, 0, -14, 2.2, 2.6, 0.35, 'metal', { toggle: { period: 11, open: 4, phase: 0 } }),
+    glass(-22, 1.3, -11, 0.12, 2.6, 1.6, 60),
+    box(-28, 0, -8, 2.2, 2.6, 0.4, 'metal', { toggle: { period: 11, open: 4, phase: 0 } }),
+    crate(-30, -14, 1.3, 1.05, 1.3),
+    box(-24, 0, -18, 2, 0.5, 1.2, 'concrete'),
     box(-26, 0, 12, 16, 3.6, 0.4, 'concrete'),
     box(-26, 0, 24, 16, 3.6, 0.4, 'concrete'),
     box(-26, 0, 18, 2.4, 2.6, 0.35, 'metal', { toggle: { period: 11, open: 4, phase: 5 } }),
-    // east labs
+    crate(-28, 17, 1.3, 1.05, 1.3),
+    // ── East labs: lane between two walls, door at the end, room to the south ──
     box(28, 0, -16, 0.4, 4, 18, 'concrete'),
     box(20, 0, -16, 0.4, 4, 10, 'concrete'),
-    box(24, 0, -6, 8, 2.5, 0.35, 'metal', { toggle: { period: 13, open: 5, phase: 2 } }),
-    box(30, 0, 14, 12, 3.2, 8, 'concrete'),
+    glass(20, 1.3, -16, 0.12, 2.6, 6, 60),
+    box(24, 0, -6.5, 8, 2.5, 0.35, 'metal', { toggle: { period: 13, open: 5, phase: 2 } }),
+    crate(24, -16, 1.3, 1.05, 1.3),
+    // low corner walls + cover instead of a dead solid block
+    box(28, 0, 10, 10, 2.2, 0.4, 'concrete'),
+    box(33, 0, 14, 0.4, 2.2, 8, 'concrete'),
+    crate(30, 14, 1.3, 1.05, 1.3),
+    crate(26, 16, 1.3, 1.05, 1.3),
+    // bank cover hugging the channel
     crate(-14, -6, 1.5, 1.1, 1.5),
+    box(-18, 0, -14, 1.2, 1.2, 2.6, 'concrete'),
+    crate(-10, 2, 1.3, 1.1, 1.3),
+    box(-16, 0, 8, 2.6, 0.5, 1.2, 'concrete'),
     crate(14, 8, 1.6, 1.2, 1.4),
-    crate(-12, 22, 1.2, 1, 2),
+    box(18, 0, 0, 1.2, 1.2, 2.6, 'concrete'),
+    crate(10, -2, 1.3, 1.1, 1.3),
+    box(16, 0, -12, 2.6, 0.5, 1.2, 'concrete'),
     box(-16, 2.4, 0, 0.2, 0.7, 4, 'trim', { solid: false, visual: true }),
+    glow(0, -0.6, 0, 0.3, 0.3, 0.3),
   ];
   return pack({
     id: 'floodline',
@@ -298,11 +375,12 @@ function floodline() {
       { x: -24, y: 3, z: -14, color: '#7af0ff', intensity: 5, distance: 12 },
       { x: 24, y: 3, z: 10, color: '#9ad7ff', intensity: 5, distance: 12 },
       { x: 0, y: 2, z: -18, color: '#5cffd6', intensity: 4, distance: 10 },
+      { x: -12, y: 2, z: 16, color: '#3dffe8', intensity: 4, distance: 10 },
     ],
     spawns: {
       a: [sp(-20, -28, PI), sp(-8, -28, PI), sp(16, -28, PI), sp(30, -26, PI), sp(-32, -20, PI / 2)],
       b: [sp(-20, 28, 0), sp(-8, 28, 0), sp(18, 28, 0), sp(30, 26, 0), sp(-30, 22, -0.4)],
-      ffa: [sp(-14, 0, 0), sp(14, -10, PI), sp(0, 8, 1), sp(-24, 16, 0), sp(28, -8, PI), sp(8, 20, 0)],
+      ffa: [sp(-14, 0, 0), sp(14, -10, PI), sp(0, 8, 1), sp(-24, 16, 0), sp(24, -20, PI), sp(8, 20, 0)],
     },
     objectives: [
       { id: 'west', x: -24, y: 0, z: 0, radius: 3.2 },
@@ -319,29 +397,47 @@ function floodline() {
 }
 
 function dustStation() {
+  // main deck in four slabs, leaving the maintenance trench a real open pit
+  // (pit opening: x -36..-14, z -8..20)
   const boxes = [
-    floor(-40, 40, -32, 32, 'sand'),
-    floor(8, 36, -10, 22, 'sand'),
+    floor(-40, 40, -32, -8, 'sand'),
+    floor(-40, 40, 20, 32, 'sand'),
+    floor(-40, -36, -8, 20, 'sand'),
+    floor(-14, 40, -8, 20, 'sand'),
     ...walls(-40, 40, -32, 32, 7),
-    // train cars down the middle lane, gaps to cross
+    // train consist down the center lane
     box(-2, 0, -18, 3.2, 2.5, 8, 'metal'),
     box(-2, 0, -4, 3.2, 2.5, 7, 'metal'),
     box(-2, 0, 10, 3.2, 2.5, 8, 'metal'),
     box(-2, 0, 22, 3.2, 2.2, 5, 'caution'),
-    // courtyard cover
+    glow(-2, 3.3, 0, 0.18, 0.18, 46, 'neon'),
+    // raised walkway beside the train with a stair
+    slab(2, 0.9, 0, 2.4, 30, 'metal'),
+    ...stairs(3.6, -10, 2, 4, 0.9, 'x-', 'metal'),
+    // east courtyard + watch box
     crate(18, 0, 2, 1.2, 2),
     crate(24, 8, 1.6, 1.1, 1.6),
     crate(16, 14, 1.4, 1.4, 1.4),
     box(28, 0, 4, 0.5, 1.6, 8, 'concrete'),
-    // maintenance trench
+    box(30, 0, -6, 4, 2.2, 4, 'concrete'),
+    ...stairs(25.3, -6, 2.6, 5, 2.2, 'x+', 'metal'),
+    glass(30, 1.1, -4.06, 2.6, 1.1, 0.12, 60),
+    // maintenance trench: open pit with edge walls, crossing catwalks, stairs at both ends
     floor(-36, -14, -8, 20, 'concrete', -2.2),
     box(-25, -2.2, -8, 22, 2.2, 0.5, 'concrete'),
-    box(-25, 2.1, 6, 16, 0.35, 10, 'concrete'),
-    ...stairs(-18, -12, 3.2, 5.5, 2.2, 'z+', 'metal', -2.2),
-    ...stairs(-30, 18, 3, 5, 2.2, 'z-', 'metal', -2.2),
+    box(-25, -2.2, 20, 22, 2.2, 0.5, 'concrete'),
+    ...stairs(-18, -6.14, 3.2, 5.5, 2.2, 'z-', 'metal', -2.2),
+    ...stairs(-18, 18.14, 3.2, 5.5, 2.2, 'z+', 'metal', -2.2),
+    slab(-25, -0.3, 0, 16, 1.6, 'metal'),
+    slab(-25, -0.3, 14, 16, 1.6, 'metal'),
+    box(-25, -2.2, 0, 1.3, 1.25, 1.3, 'crate'),
     box(-36, 1.5, 0, 0.2, 0.4, 6, 'caution', { solid: false, visual: true }),
+    // lane + yard cover
     crate(-8, -24, 1.5, 1.1, 1.5),
+    box(2, 0, -26, 1.4, 1.3, 2.8, 'concrete'),
     crate(8, 26, 1.5, 1.1, 1.5),
+    box(-8, 0, -10, 1.2, 1.3, 3, 'concrete'),
+    glow(-2, 0.03, 0, 0.4, 0.04, 58, 'trim'),
   ];
   return pack({
     id: 'dust_station',
@@ -358,11 +454,12 @@ function dustStation() {
     lights: [
       { x: 20, y: 5, z: 6, color: '#ffd2a0', intensity: 6, distance: 18 },
       { x: -24, y: 1, z: 6, color: '#ffb020', intensity: 3, distance: 10 },
+      { x: 0, y: 4, z: -18, color: '#ffe0b0', intensity: 4, distance: 12 },
     ],
     spawns: {
       a: [sp(-8, -28, PI), sp(6, -28, PI), sp(20, -26, PI), sp(-24, -26, PI), sp(32, -20, PI)],
-      b: [sp(-8, 28, 0), sp(8, 28, 0), sp(22, 26, 0), sp(-22, 26, 0), sp(-32, 16, 0)],
-      ffa: [sp(20, 6, 1), sp(-24, 4, 0.2), sp(0, -8, PI), sp(12, 18, 0), sp(-16, -16, 0.8), sp(30, 10, -1)],
+      b: [sp(-8, 28, 0), sp(8, 28, 0), sp(22, 26, 0), sp(-22, 26, 0), sp(-32, 24, 0)],
+      ffa: [sp(20, 6, 1), sp(-24, -14, 0.2), sp(0, -10, PI), sp(12, 18, 0), sp(-16, -16, 0.8), sp(30, 10, -1)],
     },
     objectives: [
       { id: 'yard', x: 20, y: 0, z: 6, radius: 3.6 },
@@ -383,32 +480,40 @@ function skybridge() {
     // tower cores
     box(-22, 0, 0, 10, 8.2, 14, 'concrete'),
     box(22, 0, 0, 10, 8.2, 14, 'concrete'),
-    // mid walkways around cores
-    slab(-22, 4.1, -12, 14, 5, 'metal'),
-    slab(-22, 4.1, 12, 14, 5, 'metal'),
-    slab(22, 4.1, -12, 14, 5, 'metal'),
-    slab(22, 4.1, 12, 14, 5, 'metal'),
+    // mid walkways butting the tower faces
+    slab(-22, 4.1, -10, 14, 6, 'metal'),
+    slab(-22, 4.1, 10, 14, 6, 'metal'),
+    slab(22, 4.1, -10, 14, 6, 'metal'),
+    slab(22, 4.1, 10, 14, 6, 'metal'),
+    // tower-top decks + the high bridge spanning both towers
     slab(-22, 8.2, 0, 12, 16, 'metal'),
     slab(22, 8.2, 0, 12, 16, 'metal'),
-    // bridges
-    slab(0, 4.1, -6, 16, 3.2, 'metal'),
-    slab(0, 4.1, 6, 16, 3.2, 'metal'),
-    slab(0, 8.2, 0, 14, 3.4, 'metal'),
+    slab(0, 8.2, 0, 34, 3.4, 'metal'),
     // glass skins on the high bridge
-    box(0, 8.2, -1.9, 12, 2.1, 0.12, 'glass', { breakable: true, hp: 60 }),
-    box(0, 8.2, 1.9, 12, 2.1, 0.12, 'glass', { breakable: true, hp: 60 }),
-    box(-6, 4.1, -6, 0.12, 2, 2.6, 'glass', { breakable: true, hp: 50 }),
-    box(6, 4.1, 6, 0.12, 2, 2.6, 'glass', { breakable: true, hp: 50 }),
-    // stairs
-    ...stairs(-22, -20, 3.4, 6.5, 4.1, 'z+', 'metal'),
-    ...stairs(22, 20, 3.4, 6.5, 4.1, 'z-', 'metal'),
-    ...stairs(-30, 0, 3.2, 6, 4.1, 'x+', 'metal'),
-    ...stairs(14, 0, 3, 5.5, 4.1, 'x-', 'metal'),
-    ...stairs(-22, -12, 3.2, 5.4, 4.1, 'z+', 'metal', 4.1),
-    ...stairs(22, 12, 3.2, 5.4, 4.1, 'z-', 'metal', 4.1),
+    glass(0, 8.2, -1.9, 28, 2.1, 0.12, 60),
+    glass(0, 8.2, 1.9, 28, 2.1, 0.12, 60),
+    // stairs: ground -> walkway -> tower top, at each tower
+    ...stairs(-22, -16, 3.4, 6.5, 4.1, 'z+', 'metal'),
+    ...stairs(22, 16, 3.4, 6.5, 4.1, 'z-', 'metal'),
+    ...stairs(-22, -10, 3.2, 5.4, 4.1, 'z+', 'metal', 4.1),
+    ...stairs(22, 10, 3.2, 5.4, 4.1, 'z-', 'metal', 4.1),
+    // corridor catwalks (5.4) above the west/east approaches
+    slab(-31.5, 5.4, 0, 9, 2.4, 'metal'),
+    slab(31.5, 5.4, 0, 9, 2.4, 'metal'),
+    ...stairs(-31.5, -5, 2.8, 6, 5.4, 'z+', 'metal'),
+    ...stairs(31.5, 5, 2.8, 6, 5.4, 'z-', 'metal'),
+    // ground plaza: pillars, low ring, crates
     crate(-8, -16, 1.4, 1.1, 1.4),
     crate(8, 16, 1.4, 1.1, 1.4),
-    box(0, 6.2, 0, 0.3, 0.3, 6, 'trim', { solid: false, visual: true }),
+    box(0, 0, 0, 3, 0.5, 1.2, 'concrete'),
+    box(0, 0, -12, 3, 0.5, 1.2, 'concrete'),
+    box(0, 0, 12, 3, 0.5, 1.2, 'concrete'),
+    box(-12, 0, -12, 1.1, 2.4, 1.1, 'concrete'),
+    box(12, 0, 12, 1.1, 2.4, 1.1, 'concrete'),
+    box(12, 0, -12, 1.1, 2.4, 1.1, 'concrete'),
+    box(-12, 0, 12, 1.1, 2.4, 1.1, 'concrete'),
+    glow(0, 8.2, 0, 0.3, 0.3, 6, 'neon'),
+    glow(0, 0.03, 0, 60, 0.04, 0.5, 'trim'),
   ];
   return pack({
     id: 'skybridge',
@@ -425,18 +530,19 @@ function skybridge() {
       { x: 0, y: 10, z: 0, color: '#d8f4ff', intensity: 8, distance: 20 },
       { x: -22, y: 6, z: 0, color: '#7ec8ff', intensity: 5, distance: 12 },
       { x: 22, y: 6, z: 0, color: '#ffd0a8', intensity: 5, distance: 12 },
+      { x: 0, y: 4, z: -14, color: '#9ad7ff', intensity: 4, distance: 12 },
     ],
     spawns: {
       a: [sp(-30, -22, PI * 0.85), sp(-14, -22, PI), sp(0, -22, PI), sp(14, -22, PI), sp(28, -20, PI)],
       b: [sp(-28, 22, 0.2), sp(-12, 22, 0), sp(0, 22, 0), sp(16, 22, 0), sp(30, 20, -0.2)],
-      ffa: [sp(-22, 2, 0, 8.2), sp(22, -12, PI, 4.1), sp(0, 0, 1.2, 8.2), sp(-8, -6, PI), sp(10, 10, 0), sp(-30, 6, 0.5)],
+      ffa: [sp(-22, 2, 0, 8.2), sp(22, 10, PI, 4.1), sp(0, 0, 1.2, 8.2), sp(-8, -14, PI), sp(10, 10, 0), sp(-30, 6, 0.5)],
     },
     objectives: [
-      { id: 'west', x: -22, y: 4.1, z: -12, radius: 3 },
-      { id: 'bridge', x: 0, y: 4.1, z: 0, radius: 3 },
-      { id: 'east', x: 22, y: 4.1, z: 12, radius: 3 },
-      { id: 'high', x: 0, y: 8.2, z: 0, radius: 2.8 },
-      { id: 'ground', x: 0, y: 0, z: -12, radius: 3 },
+      { id: 'west', x: -26, y: 4.1, z: -10, radius: 3 },
+      { id: 'bridge', x: 0, y: 8.2, z: 0, radius: 3 },
+      { id: 'east', x: 26, y: 4.1, z: 10, radius: 3 },
+      { id: 'high', x: -22, y: 8.2, z: 0, radius: 2.8 },
+      { id: 'ground', x: 0, y: 0, z: -14, radius: 3 },
     ],
     zones: [],
     pads: [],
@@ -447,22 +553,42 @@ function glassworks() {
   const boxes = [
     floor(-36, 36, -30, 30, 'concrete'),
     ...walls(-36, 36, -30, 30, 7),
-    // three machine lanes
+    // three machine lanes with a walkway over the west machine
     box(-16, 0, 0, 3.2, 1.35, 28, 'metal'),
     box(0, 0, 2, 3.2, 1.35, 22, 'metal'),
     box(16, 0, -2, 3.2, 1.35, 26, 'metal'),
-    // gaps are implicit because machines don't span full length — add end caps and side rooms
+    slab(-16, 1.65, 0, 3.6, 30, 'metal'),
+    ...stairs(-21, -8, 2.6, 6, 1.65, 'x+', 'metal'),
+    glass(-16, 1.65, 0, 0.12, 2.2, 3.2, 50),
+    // side rooms with interior cover
     box(-28, 0, -16, 8, 3.4, 8, 'concrete'),
     box(-28, 0, 16, 8, 3.4, 8, 'concrete'),
     box(28, 0, -14, 8, 3.2, 10, 'concrete'),
     box(28, 0, 16, 8, 3.2, 8, 'concrete'),
+    crate(-28, -16, 1.2, 1, 1.2),
+    crate(-28, 16, 1.2, 1, 1.2),
+    crate(28, -14, 1.2, 1, 1.2),
+    crate(28, 16, 1.2, 1, 1.2),
+    // loft over the south gate + east annex
     slab(0, 3.6, -20, 10, 6, 'metal'),
     ...stairs(0, -14, 3.4, 5.5, 3.6, 'z-', 'metal'),
-    box(-8, 1.6, -20, 0.12, 1.8, 4, 'glass', { breakable: true, hp: 40 }),
-    box(8, 1.6, 12, 0.12, 1.8, 4, 'glass', { breakable: true, hp: 40 }),
+    glass(-5.06, 3.6, -20, 0.12, 1.8, 5, 40),
+    slab(10, 2.8, 18, 8, 5, 'metal'),
+    ...stairs(10, 12, 2.8, 5.5, 2.8, 'z+', 'metal'),
+    // lane cover
     crate(-8, 8, 1.3, 1, 1.3),
     crate(8, -8, 1.3, 1.1, 1.3),
+    box(-8, 0, -12, 2.4, 0.55, 1.2, 'concrete'),
+    box(8, 0, 12, 2.4, 0.55, 1.2, 'concrete'),
+    box(-4, 0, 0, 1, 2.2, 1, 'metal'),
+    box(4, 0, -6, 1, 2.2, 1, 'metal'),
+    // dressing
     box(0, 2.2, 0, 0.2, 0.5, 8, 'trim', { solid: false, visual: true }),
+    glow(-28, 2.5, -20, 6, 0.4, 0.12),
+    glow(-28, 2.5, 20, 6, 0.4, 0.12),
+    glow(28, 2.4, -19, 6, 0.4, 0.12),
+    glow(28, 2.4, 20, 6, 0.4, 0.12),
+    glow(0, 3.7, -23, 8, 0.12, 0.12, 'neon'),
   ];
   return pack({
     id: 'glassworks',
@@ -479,6 +605,7 @@ function glassworks() {
       { x: 0, y: 4.5, z: 0, color: '#b6ffd8', intensity: 7, distance: 18 },
       { x: -20, y: 3, z: -10, color: '#8dffc6', intensity: 4, distance: 12 },
       { x: 20, y: 3, z: 10, color: '#ffe0a0', intensity: 4, distance: 12 },
+      { x: -16, y: 2.6, z: 0, color: '#8dffc6', intensity: 3, distance: 10 },
     ],
     spawns: {
       a: [sp(-12, -26, PI), sp(0, -26, PI), sp(14, -26, PI), sp(-28, -24, PI), sp(28, -22, PI)],
@@ -486,9 +613,9 @@ function glassworks() {
       ffa: [sp(-8, 0, 1), sp(10, -6, PI), sp(0, -20, 0, 3.6), sp(-24, 8, 0.4), sp(24, -8, -0.5), sp(4, 16, PI)],
     },
     objectives: [
-      { id: 'west', x: -16, y: 0, z: 8, radius: 3 },
-      { id: 'mid', x: 0, y: 0, z: 2, radius: 3.2 },
-      { id: 'east', x: 16, y: 0, z: -8, radius: 3 },
+      { id: 'west', x: -10, y: 0, z: 8, radius: 3 },
+      { id: 'mid', x: -5, y: 0, z: -4, radius: 3.2 },
+      { id: 'east', x: 22, y: 0, z: -8, radius: 3 },
       { id: 'loft', x: 0, y: 3.6, z: -20, radius: 2.8 },
       { id: 'north', x: -8, y: 0, z: 18, radius: 3 },
     ],
@@ -501,30 +628,49 @@ function relaySpire() {
   const boxes = [
     floor(-34, 34, -34, 34, 'metal'),
     ...walls(-34, 34, -34, 34, 10),
-    // corner towers
+    // corner towers + core column
     box(-18, 0, -18, 10, 6.4, 10, 'concrete'),
     box(18, 0, -18, 10, 6.4, 10, 'concrete'),
     box(-18, 0, 18, 10, 6.4, 10, 'concrete'),
     box(18, 0, 18, 10, 6.4, 10, 'concrete'),
-    // core
     box(0, 0, 0, 5, 8.4, 5, 'metal'),
-    // ring deck
-    slab(0, 3.6, -18, 16, 6, 'metal'),
-    slab(0, 3.6, 18, 16, 6, 'metal'),
-    slab(-18, 3.6, 0, 6, 16, 'metal'),
-    slab(18, 3.6, 0, 6, 16, 'metal'),
-    slab(0, 6.4, -18, 8, 8, 'metal'),
-    slab(0, 6.4, 18, 8, 8, 'metal'),
-    ...stairs(0, -26, 3.4, 6.2, 3.6, 'z+', 'metal'),
-    ...stairs(0, 26, 3.4, 6.2, 3.6, 'z-', 'metal'),
-    ...stairs(-26, 0, 3.4, 6.2, 3.6, 'x+', 'metal'),
-    ...stairs(26, 0, 3.4, 6.2, 3.6, 'x-', 'metal'),
-    ...stairs(0, -18, 3, 5, 2.8, 'z+', 'metal', 3.6),
+    // ring deck (arms long enough to meet at the corners)
+    slab(0, 3.6, -18, 32, 6, 'metal'),
+    slab(0, 3.6, 18, 32, 6, 'metal'),
+    slab(-18, 3.6, 0, 6, 32, 'metal'),
+    slab(18, 3.6, 0, 6, 32, 'metal'),
+    // top pads just beyond the ring edge, fed by short flights
+    slab(0, 6.4, -25, 8, 8, 'metal'),
+    slab(0, 6.4, 25, 8, 8, 'metal'),
+    slab(25, 6.4, 0, 8, 8, 'metal'),
+    slab(-25, 6.4, 0, 8, 8, 'metal'),
+    // stairs: ground→ring, ring→top pads
+    ...stairs(0, -23, 3.4, 6.2, 3.6, 'z+', 'metal'),
+    ...stairs(0, 23, 3.4, 6.2, 3.6, 'z-', 'metal'),
+    ...stairs(-23, 0, 3.4, 6.2, 3.6, 'x+', 'metal'),
+    ...stairs(23, 0, 3.4, 6.2, 3.6, 'x-', 'metal'),
+    ...stairs(-3.5, -19.08, 3, 5, 2.8, 'z-', 'metal', 3.6),
+    ...stairs(3.5, 19.08, 3, 5, 2.8, 'z+', 'metal', 3.6),
+    ...stairs(19.08, -3.5, 3, 5, 2.8, 'x+', 'metal', 3.6),
+    ...stairs(-19.08, 3.5, 3, 5, 2.8, 'x-', 'metal', 3.6),
+    // lane cover + breakable gates between towers and core
     crate(-8, -8, 1.3, 1.1, 1.3),
     crate(8, 8, 1.3, 1.1, 1.3),
     crate(8, -6, 1.2, 1, 1.2),
+    box(0, 0, -10, 3, 0.5, 1.2, 'concrete'),
+    box(0, 0, 10, 3, 0.5, 1.2, 'concrete'),
+    box(-10, 0, 0, 1.2, 0.5, 3, 'concrete'),
+    box(10, 0, 0, 1.2, 0.5, 3, 'concrete'),
+    glass(0, 0, -13, 6, 2.2, 0.12, 60),
+    glass(0, 0, 13, 6, 2.2, 0.12, 60),
+    // dressing
     box(0, 7.2, 0, 0.4, 2.2, 0.4, 'trim'),
+    glow(0, 8.45, 0, 5.4, 0.1, 5.4, 'neon'),
     box(0, 5, -24, 6, 0.25, 0.25, 'neon', { solid: false, visual: true }),
+    glow(0, 3.75, -15.4, 14, 0.1, 0.12, 'neon'),
+    glow(0, 3.75, 15.4, 14, 0.1, 0.12, 'neon'),
+    glow(15.4, 3.75, 0, 0.12, 0.1, 14, 'neon'),
+    glow(-15.4, 3.75, 0, 0.12, 0.1, 14, 'neon'),
   ];
   return pack({
     id: 'relay_spire',
@@ -541,18 +687,19 @@ function relaySpire() {
       { x: 0, y: 8, z: 0, color: '#d28bff', intensity: 10, distance: 20 },
       { x: -18, y: 5, z: -18, color: '#ff8ad4', intensity: 4, distance: 10 },
       { x: 18, y: 5, z: 18, color: '#7af0ff', intensity: 4, distance: 10 },
+      { x: 0, y: 4, z: -22, color: '#d28bff', intensity: 4, distance: 12 },
     ],
     spawns: {
       a: [sp(-8, -30, PI), sp(0, -30, PI), sp(8, -30, PI), sp(-26, -26, PI * 0.75), sp(26, -26, PI * 1.25)],
       b: [sp(-8, 30, 0), sp(0, 30, 0), sp(8, 30, 0), sp(-26, 26, 0.4), sp(26, 26, -0.4)],
-      ffa: [sp(0, -18, PI, 3.6), sp(-18, 0, 0.5, 3.6), sp(18, 2, 1, 6.4), sp(0, 10, 0), sp(-10, 8, PI), sp(12, -12, 0.8)],
+      ffa: [sp(0, -18, PI, 3.6), sp(-18, 0, 0.5, 3.6), sp(25, 0, 1, 6.4), sp(6, 10, 0), sp(-10, 8, PI), sp(12, -12, 0.8)],
     },
     objectives: [
       { id: 'core', x: 6, y: 0, z: 0, radius: 3 },
       { id: 'north', x: 0, y: 3.6, z: -18, radius: 3 },
       { id: 'south', x: 0, y: 3.6, z: 18, radius: 3 },
       { id: 'east', x: 18, y: 3.6, z: 0, radius: 2.8 },
-      { id: 'west', x: -18, y: 0, z: 8, radius: 3 },
+      { id: 'west', x: -18, y: 3.6, z: 0, radius: 3 },
     ],
     zones: [],
     pads: [],
@@ -563,14 +710,17 @@ function cinderMarket() {
   const boxes = [
     floor(-32, 32, -32, 32, 'wood'),
     ...walls(-32, 32, -32, 32, 6),
-    // corner shops
+    // corner shops with rooftop perches
     box(-22, 0, -22, 10, 4.6, 10, 'concrete'),
     box(22, 0, -22, 10, 4.6, 10, 'concrete'),
     box(-22, 0, 22, 10, 4.2, 10, 'concrete'),
     box(22, 0, 22, 10, 4.2, 10, 'concrete'),
-    ...stairs(-14, -22, 3, 5.2, 4.6, 'x+', 'wood'),
-    ...stairs(14, 22, 3, 5.2, 4.2, 'x-', 'wood'),
-    // stall field with three cleared lanes (x=0, z=0, and a side street)
+    ...stairs(-13.3, -22, 3, 5.2, 4.6, 'x-', 'wood'),
+    ...stairs(13.3, 22, 3, 5.2, 4.2, 'x+', 'wood'),
+    slab(-22, 4.75, -22, 8, 4, 'metal'),
+    slab(22, 4.75, -22, 8, 4, 'metal'),
+    glass(-17, 2.3, -22, 0.12, 2.3, 4, 60),
+    glass(17, 2.3, -22, 0.12, 2.3, 4, 60),
   ];
   const stalls = [
     [-10, -10], [-10, -4], [-10, 6], [-10, 12],
@@ -581,11 +731,25 @@ function cinderMarket() {
   for (const [x, z] of stalls) {
     if (Math.abs(x) < 2.2 || Math.abs(z) < 2.2) continue;
     boxes.push(box(x, 0, z, 2.1, 1.15, 2.1, 'wood'));
-    boxes.push(box(x, 1.15, z, 2.2, 0.12, 2.2, 'caution', { solid: false, visual: true }));
+    boxes.push(glow(x, 1.15, z, 2.2, 0.12, 2.2, 'caution'));
   }
-  boxes.push(box(0, 0, 0, 2.4, 1.3, 2.4, 'trim'));
-  boxes.push(box(-22, 3.4, -22, 2, 0.5, 0.2, 'neon', { solid: false, visual: true }));
-  boxes.push(box(22, 3.4, 22, 2, 0.5, 0.2, 'neon', { solid: false, visual: true }));
+  // plaza: crate steps up to the catwalk (its visible support too)
+  boxes.push(box(0, 0, 2.6, 1.4, 0.8, 1.0, 'crate'));
+  boxes.push(box(0, 0.8, 1.9, 1.4, 0.7, 0.9, 'crate'));
+  boxes.push(box(0, 1.5, 1.3, 1.4, 0.6, 0.8, 'crate'));
+  // catwalk along the center lane, breakable glass gates at x ±12
+  boxes.push(slab(0, 2.4, 0, 60, 2.2, 'metal'));
+  boxes.push(glass(-12, 2.4, 0, 0.12, 2.2, 1.8, 60));
+  boxes.push(glass(12, 2.4, 0, 0.12, 2.2, 1.8, 60));
+  // plaza + lane cover
+  boxes.push(crate(-6, 6, 1.2, 1, 1.2));
+  boxes.push(crate(6, -6, 1.2, 1, 1.2));
+  boxes.push(box(-6, 0, 0, 1.2, 0.55, 2.6, 'concrete'));
+  boxes.push(glow(-22, 3.4, -22, 2, 0.5, 0.2, 'neon'));
+  boxes.push(glow(22, 3.4, 22, 2, 0.5, 0.2, 'neon'));
+  boxes.push(glow(0, 0.03, 0, 60, 0.04, 0.4, 'trim'));
+  boxes.push(glow(-22, 4.9, -20, 7, 0.12, 0.12, 'neon'));
+  boxes.push(glow(22, 4.9, -20, 7, 0.12, 0.12, 'neon'));
   return pack({
     id: 'cinder_market',
     nameKey: 'map.cinder_market.name',
@@ -609,7 +773,7 @@ function cinderMarket() {
       ffa: [sp(-12, 4, 0.5), sp(12, -6, PI), sp(0, 12, 0), sp(-20, 8, 0.2), sp(18, 16, -0.4), sp(6, -18, PI)],
     },
     objectives: [
-      { id: 'plaza', x: 0, y: 0, z: 0, radius: 3.3 },
+      { id: 'plaza', x: 0, y: 2.4, z: 0, radius: 3.3 },
       { id: 'west', x: -14, y: 0, z: 6, radius: 3 },
       { id: 'east', x: 14, y: 0, z: -6, radius: 3 },
       { id: 'shop', x: -22, y: 4.6, z: -22, radius: 2.6 },
@@ -629,19 +793,35 @@ function sublevel9() {
     box(-16, 0, 8, 0.6, 3.4, 16, 'concrete'),
     box(16, 0, -8, 0.6, 3.4, 18, 'concrete'),
     box(16, 0, 24, 0.6, 3.4, 10, 'concrete'),
-    // pillars
   ];
+  // pillars
   for (let z = -28; z <= 28; z += 8) {
     boxes.push(box(-8, 0, z, 1.15, 3.3, 1.15, 'metal'));
     boxes.push(box(8, 0, z + 4, 1.15, 3.3, 1.15, 'metal'));
   }
-  // train on the west track
+  // parked consist on the west track + an east car
   boxes.push(box(-20, 0, -10, 3.2, 2.3, 14, 'caution'));
   boxes.push(box(-20, 0, 14, 3.2, 2.3, 10, 'caution'));
+  boxes.push(box(21, 0, -20, 3, 2.3, 9, 'caution'));
+  // central platform with a window
+  boxes.push(slab(0, 0.9, 0, 8, 3, 'metal'));
+  boxes.push(glass(0, 0.9, -1.5, 7, 2.2, 0.12, 60));
+  // east service catwalk on stacked crate steps
+  boxes.push(slab(21, 2.4, -4, 8, 2.4, 'metal'));
+  boxes.push(crate(16.5, -4, 1.2, 1.2, 1.2));
+  boxes.push(box(17.0, 1.2, -4, 1.0, 0.9, 1.0, 'crate'));
+  boxes.push(glass(17, 2.4, -4, 0.12, 2.2, 2, 60));
+  // cover
   boxes.push(box(0, 0, 0, 1.6, 1.1, 2.4, 'crate'));
   boxes.push(box(0, 0, -16, 1.4, 1.2, 1.4, 'crate'));
   boxes.push(box(4, 0, 18, 1.5, 1, 1.5, 'crate'));
+  boxes.push(crate(-4, 22, 1.4, 1.1, 1.4));
+  boxes.push(box(4, 0, -12, 2.4, 0.55, 1.2, 'concrete'));
+  boxes.push(box(-4, 0, 12, 2.4, 0.55, 1.2, 'concrete'));
+  // dressing
   boxes.push(box(0, 3.6, 0, 8, 0.2, 0.3, 'neon', { solid: false, visual: true }));
+  boxes.push(glow(-16, 0.2, 0, 0.15, 0.15, 70, 'neon'));
+  boxes.push(glow(0, 0.03, 0, 0.4, 0.04, 70, 'trim'));
   return pack({
     id: 'sublevel_9',
     nameKey: 'map.sublevel_9.name',
@@ -657,6 +837,7 @@ function sublevel9() {
       { x: 0, y: 3.2, z: -12, color: '#9ad7ff', intensity: 5, distance: 12 },
       { x: 0, y: 3.2, z: 12, color: '#ffb020', intensity: 4, distance: 12 },
       { x: -18, y: 2.4, z: 0, color: '#7af0ff', intensity: 3, distance: 8 },
+      { x: 20, y: 3, z: -16, color: '#7af0ff', intensity: 3, distance: 10 },
     ],
     spawns: {
       a: [sp(-6, -34, PI), sp(0, -34, PI), sp(8, -34, PI), sp(-18, -32, PI), sp(18, -30, PI)],
@@ -664,7 +845,7 @@ function sublevel9() {
       ffa: [sp(-20, 0, 0.4), sp(12, -8, PI), sp(0, 16, 0), sp(-8, 8, 1), sp(18, 12, -0.6), sp(4, -20, PI)],
     },
     objectives: [
-      { id: 'platform', x: 0, y: 0, z: 0, radius: 3.2 },
+      { id: 'platform', x: 0, y: 0.9, z: 0, radius: 3.2 },
       { id: 'west', x: -20, y: 0, z: 4, radius: 3 },
       { id: 'east', x: 12, y: 0, z: -12, radius: 3 },
       { id: 'north', x: 0, y: 0, z: 22, radius: 3 },
@@ -679,27 +860,45 @@ function harborLattice() {
   const boxes = [
     floor(-32, 32, -30, 22, 'wood'),
     floor(-18, 18, 22, 30, 'wood'),
-    ...walls(-36, 36, -32, 18, 7),
+    // north/west/east boundary walls only — the south is open dock
+    box(0, 0, -32.7, 74.8, 7, 1.4, 'concrete', { boundary: true }),
+    box(-36.7, 0, -7, 1.4, 7, 50, 'concrete', { boundary: true }),
+    box(36.7, 0, -7, 1.4, 7, 50, 'concrete', { boundary: true }),
     // the south water is open — no wall at +z beyond the pier, kill zone instead.
     box(0, 0, -28, 20, 6, 1.2, 'concrete', { boundary: true }),
-    // containers
+    // containers (two stacked pairs give height)
     box(-20, 0, -8, 2.6, 2.5, 6, 'caution'),
     box(-20, 2.5, -8, 2.6, 2.4, 6, 'metal'),
     box(-10, 0, 4, 2.6, 2.5, 6, 'caution'),
     box(12, 0, -6, 2.6, 2.5, 6.2, 'metal'),
     box(22, 0, 6, 2.6, 2.5, 6, 'caution'),
     box(22, 2.5, 6, 2.6, 2.3, 6, 'metal'),
-    // ship hull
+    ...stairs(19.2, 12.6, 2.4, 6, 4.8, 'z-', 'metal'),
+    // ship hull with a breakable window on the bow
     box(0, 0, 12, 8, 2.2, 14, 'metal'),
     box(0, 2.2, 12, 6, 1.6, 10, 'concrete'),
     ...stairs(6, 12, 3, 5, 2.2, 'x-', 'metal'),
-    // crane
+    glass(0, 0, 19, 6, 2.2, 0.12, 60),
+    // barge + pier cover
+    slab(24, 0.5, 20, 8, 6, 'metal'),
+    crate(24, 20, 1.3, 1.05, 1.3),
+    crate(-10, 26, 1.2, 1, 1.2),
+    box(10, 0, 26, 2.4, 0.55, 1.2, 'concrete'),
+    // crane legs
     box(-28, 0, 14, 1.2, 7, 1.2, 'caution'),
     box(28, 0, -2, 1.2, 7, 1.2, 'caution'),
     slab(-28, 7, 10, 8, 1.4, 'caution', 0.3),
+    // dock cover
     crate(8, -14, 1.4, 1.1, 1.4),
     crate(-6, -16, 1.6, 1.2, 1.2),
+    box(-14, 0, -2, 2.4, 0.55, 1.2, 'concrete'),
+    box(8, 0, -20, 2.4, 0.55, 1.2, 'concrete'),
+    // water
     box(0, 0.2, 26, 16, 0.2, 8, 'water', { solid: false, visual: true }),
+    // dressing
+    glow(0, 0.1, -27.8, 18, 0.15, 0.3, 'neon'),
+    glow(-28, 7.2, 10, 6, 0.2, 0.2, 'neon'),
+    glow(0, 0.03, 0, 60, 0.04, 0.4, 'trim'),
   ];
   return pack({
     id: 'harbor_lattice',
@@ -716,6 +915,7 @@ function harborLattice() {
       { x: 0, y: 5, z: 8, color: '#ffe0b0', intensity: 7, distance: 16 },
       { x: -20, y: 4, z: -8, color: '#ffb020', intensity: 5, distance: 12 },
       { x: 22, y: 4, z: 4, color: '#9ad7ff', intensity: 4, distance: 12 },
+      { x: 0, y: 3, z: 26, color: '#ffd27a', intensity: 4, distance: 12 },
     ],
     spawns: {
       a: [sp(-12, -26, PI), sp(0, -26, PI), sp(14, -26, PI), sp(-24, -22, PI), sp(24, -20, PI)],
@@ -724,15 +924,17 @@ function harborLattice() {
     },
     objectives: [
       { id: 'dock', x: 0, y: 0, z: -8, radius: 3.4 },
-      { id: 'ship', x: 0, y: 2.2, z: 12, radius: 3 },
+      { id: 'ship', x: 0, y: 2.2, z: 18, radius: 3 },
       { id: 'west', x: -16, y: 0, z: 6, radius: 3 },
       { id: 'east', x: 18, y: 0, z: -4, radius: 3 },
       { id: 'crane', x: -28, y: 0, z: 8, radius: 2.8 },
     ],
     zones: [
-      { id: 'water', type: 'kill', min: { x: -40, y: -4, z: 31 }, max: { x: 40, y: 2, z: 42 } },
-      { id: 'water_e', type: 'kill', min: { x: 33, y: -4, z: -40 }, max: { x: 42, y: 2, z: 40 } },
-      { id: 'water_w', type: 'kill', min: { x: -42, y: -4, z: -40 }, max: { x: -33, y: 2, z: 40 } },
+      { id: 'water', type: 'kill', min: { x: -40, y: -4, z: 30 }, max: { x: 40, y: 2, z: 42 } },
+      { id: 'water_e', type: 'kill', min: { x: 32, y: -4, z: -40 }, max: { x: 42, y: 2, z: 42 } },
+      { id: 'water_w', type: 'kill', min: { x: -42, y: -4, z: -40 }, max: { x: -32, y: 2, z: 42 } },
+      { id: 'water_se', type: 'kill', min: { x: 18, y: -4, z: 22 }, max: { x: 32, y: 2, z: 30 } },
+      { id: 'water_sw', type: 'kill', min: { x: -32, y: -4, z: 22 }, max: { x: -18, y: 2, z: 30 } },
     ],
     pads: [],
   });
@@ -746,20 +948,49 @@ function atriumLoop() {
     floor(9, 26, -9, 9, 'concrete'),
     floor(-12, 12, -12, 12, 'metal', -3.1),
     ...walls(-26, 26, -26, 26, 8),
+    // gallery ring, on slim columns
     slab(0, 4, -16, 22, 6, 'metal'),
     slab(0, 4, 16, 22, 6, 'metal'),
     slab(-16, 4, 0, 6, 14, 'metal'),
     slab(16, 4, 0, 6, 14, 'metal'),
+    box(-9, 0, -17.5, 0.7, 3.7, 0.7, 'metal'), box(9, 0, -17.5, 0.7, 3.7, 0.7, 'metal'),
+    box(-9, 0, -14.5, 0.7, 3.7, 0.7, 'metal'), box(9, 0, -14.5, 0.7, 3.7, 0.7, 'metal'),
+    box(-9, 0, 14.5, 0.7, 3.7, 0.7, 'metal'), box(9, 0, 14.5, 0.7, 3.7, 0.7, 'metal'),
+    box(-9, 0, 17.5, 0.7, 3.7, 0.7, 'metal'), box(9, 0, 17.5, 0.7, 3.7, 0.7, 'metal'),
+    box(-17.5, 0, -5, 0.7, 3.7, 0.7, 'metal'), box(-17.5, 0, 5, 0.7, 3.7, 0.7, 'metal'),
+    box(-14.5, 0, -5, 0.7, 3.7, 0.7, 'metal'), box(-14.5, 0, 5, 0.7, 3.7, 0.7, 'metal'),
+    box(14.5, 0, -5, 0.7, 3.7, 0.7, 'metal'), box(14.5, 0, 5, 0.7, 3.7, 0.7, 'metal'),
+    box(17.5, 0, -5, 0.7, 3.7, 0.7, 'metal'), box(17.5, 0, 5, 0.7, 3.7, 0.7, 'metal'),
+    // pit stairs (four, from the pit floor up to each arm)
     ...stairs(0, -7, 3.6, 6, 3.1, 'z-', 'metal', -3.1),
     ...stairs(0, 7, 3.6, 6, 3.1, 'z+', 'metal', -3.1),
     ...stairs(-7, 0, 3.4, 5.5, 3.1, 'x-', 'metal', -3.1),
     ...stairs(7, 0, 3.4, 5.5, 3.1, 'x+', 'metal', -3.1),
+    // ground->gallery stairs on the north/south arms
     ...stairs(0, -22, 3.4, 6, 4, 'z+', 'metal'),
     ...stairs(0, 22, 3.4, 6, 4, 'z-', 'metal'),
+    // gallery->gallery cross flights (west/east arms)
+    ...stairs(-16, -10.1, 2.6, 6.2, 4, 'z+', 'metal'),
+    ...stairs(16, 10.1, 2.6, 6.2, 4, 'z-', 'metal'),
+    // pit: glowing core on the floor, crate cover
+    glow(0, -3.1, 0, 0.8, 1.6, 0.8, 'neon'),
+    box(-8, -3.1, 8, 1.4, 1.1, 1.4, 'crate'),
+    box(8, -3.1, -8, 1.4, 1.1, 1.4, 'crate'),
+    // second-floor balconies above the north and east arms, with support columns
+    slab(0, 6.5, -22, 14, 5, 'metal'),
+    slab(22, 6.5, 0, 5, 14, 'metal'),
+    box(-5.5, 0, -22, 0.6, 6.2, 0.6, 'metal'),
+    box(5.5, 0, -22, 0.6, 6.2, 0.6, 'metal'),
+    box(22, 0, -5.5, 0.6, 6.5, 0.6, 'metal'),
+    box(22, 0, 5.5, 0.6, 6.5, 0.6, 'metal'),
+    ...stairs(8, -20, 2.6, 7, 6.5, 'z-', 'metal'),
+    ...stairs(17, 8, 2.6, 7, 6.5, 'x+', 'metal'),
+    glass(0, 7.6, -24.2, 13, 2.2, 0.12, 60),
+    glass(24.2, 7.6, 0, 0.12, 2.2, 13, 60),
     crate(-12, -12, 1.3, 1.1, 1.3),
     crate(12, 12, 1.3, 1.1, 1.3),
-    box(0, -2.6, 0, 2, 0.9, 2, 'trim'),
     box(0, 4.4, -16, 8, 0.2, 0.2, 'neon', { solid: false, visual: true }),
+    glow(0, 0.03, 0, 40, 0.04, 0.5, 'trim'),
   ];
   return pack({
     id: 'atrium_loop',
@@ -776,18 +1007,19 @@ function atriumLoop() {
       { x: 0, y: 6, z: 0, color: '#fff1cc', intensity: 8, distance: 20 },
       { x: 0, y: 5, z: -16, color: '#ffd27a', intensity: 4, distance: 12 },
       { x: 0, y: 2, z: 0, color: '#ffe8b0', intensity: 4, distance: 10 },
+      { x: 0, y: 7, z: -22, color: '#ffd27a', intensity: 4, distance: 10 },
     ],
     spawns: {
       a: [sp(-10, -22, PI), sp(0, -22, PI), sp(10, -22, PI), sp(-18, -18, PI * 0.8), sp(18, -18, PI * 1.2)],
       b: [sp(-10, 22, 0), sp(0, 22, 0), sp(10, 22, 0), sp(-18, 18, 0.3), sp(18, 18, -0.3)],
-      ffa: [sp(0, -16, PI, 4), sp(4, 3, 0, -3.1), sp(-16, 0, 0.6, 4), sp(12, -12, PI), sp(-8, 8, 0.2), sp(16, 6, -1)],
+      ffa: [sp(0, -16, PI, 4), sp(4, 3, 0, -3.1), sp(-16, 0, 0.6, 4), sp(12, -14, PI), sp(-8, 14, 0.2), sp(16, 6, -1)],
     },
     objectives: [
       { id: 'pit', x: 0, y: -3.1, z: 0, radius: 3.4 },
       { id: 'north', x: 0, y: 4, z: -16, radius: 3 },
       { id: 'south', x: 0, y: 4, z: 16, radius: 3 },
-      { id: 'west', x: -16, y: 0, z: 0, radius: 3 },
-      { id: 'east', x: 16, y: 0, z: 0, radius: 3 },
+      { id: 'west', x: -16, y: 4, z: 0, radius: 3 },
+      { id: 'east', x: 16, y: 4, z: 0, radius: 3 },
     ],
     zones: [],
     pads: [],
@@ -811,6 +1043,7 @@ function calibrationBay() {
     crate(-16, 6, 1.2, 1.1, 6),
     crate(16, -8, 1.2, 1.4, 4),
     box(0, 2.2, -28, 8, 0.4, 0.2, 'neon', { solid: false, visual: true }),
+    glow(0, 0.03, -10, 56, 0.04, 0.4, 'trim'),
   ];
   const pads = [
     ['linecut', -18, -28], ['kestrel', -12, -28], ['hammerfall', -6, -28], ['glassline', 0, -28],
