@@ -330,6 +330,7 @@ function hudCommon(player, match, dt) {
   game.hitPulse = Math.max(0, game.hitPulse - dt);
   game.floaters = (game.floaters || []).map((f) => ({ ...f, age: f.age + dt, y: f.y + dt * 0.85, life: f.life - dt })).filter((f) => f.life > 0);
   game.emoteT = Math.max(0, (game.emoteT || 0) - dt);
+  if (game.abilityPulse) game.abilityPulse.life -= dt;
   game.damageDirs = (game.damageDirs || []).map((d) => ({ ...d, life: d.life - dt })).filter((d) => d.life > 0);
   updatePrompt(player, match);
   if (!game.lookHint && game.inMatch && !game.editor && !game.paused) {
@@ -518,7 +519,19 @@ function handleOne(ev, player, match) {
   else if (ev.type === 'dry' && ev.playerId === game.localId) audio.play('empty');
   else if (ev.type === 'melee' && ev.playerId === game.localId) audio.play('melee');
   else if (ev.type === 'ability' || ev.type === 'ultimate') {
-    if (ev.playerId === game.localId) audio.play('ability');
+    const kind = ev.type === 'ultimate' ? 'ultimate' : 'tactical';
+    const caster = playerOf(ev.playerId, match) || { id: ev.playerId, x: ev.x, y: ev.y, z: ev.z };
+    view.abilityFx(caster, ev.ability, kind);
+    if (ev.playerId === game.localId) {
+      audio.play('ability');
+      game.abilityPulse = { kind, ability: ev.ability, life: kind === 'ultimate' ? 0.9 : 0.62, seq: (game.abilityPulse?.seq || 0) + 1 };
+      const ch = CHARACTERS.find((c) => c.id === player?.characterId);
+      const key = kind === 'ultimate' ? ch?.ultimateKey : ch?.tacticalKey;
+      if (key) setBanner(String(game.t(key)).split(':')[0], 850);
+    }
+  } else if (ev.type === 'blink') {
+    const target = playerOf(ev.playerId, match) || { id: ev.playerId, x: ev.x, y: 0, z: ev.z };
+    view.abilityFx(target, 'blink', 'tactical');
   } else if (ev.type === 'pad' && ev.playerId === game.localId) {
     const w = getWeapon(ev.weaponId);
     toast(game.t(w.nameKey));

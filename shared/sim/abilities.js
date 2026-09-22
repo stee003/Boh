@@ -82,7 +82,10 @@ function castTactical(match, player) {
   } else if (id === 'phase') {
     player.phasingT = tac.duration || 0.6;
   } else return false;
-  match.events.push({ type: 'ability', playerId: player.id, ability: id, kind: 'tactical' });
+  match.events.push({
+    type: 'ability', playerId: player.id, ability: id, kind: 'tactical',
+    x: player.x, y: player.y, z: player.z,
+  });
   return true;
 }
 
@@ -154,7 +157,10 @@ function castUltimate(match, player) {
     player.catalogT = ult.duration;
     player.ultActiveT = ult.duration;
   } else return false;
-  match.events.push({ type: 'ultimate', playerId: player.id, ability: id });
+  match.events.push({
+    type: 'ultimate', playerId: player.id, ability: id,
+    x: player.x, y: player.y, z: player.z,
+  });
   return true;
 }
 

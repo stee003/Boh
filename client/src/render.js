@@ -531,18 +531,63 @@ export function createView(canvas) {
     state.fx.add(mesh);
   }
 
+  /** A readable cast cue for both remote and local ability activations. */
+  function abilityFx(player, ability, kind = 'tactical') {
+    if (!player || state.reduceFx) return;
+    const ultimate = kind === 'ultimate';
+    const color = ultimate ? '#ffb03a' : '#5cffd6';
+    const root = new THREE.Group();
+    root.position.set(player.x, player.y, player.z);
+    root.userData.life = ultimate ? 0.9 : 0.62;
+    root.userData.grow = true;
+    root.userData.ability = true;
+    const outer = new THREE.Mesh(
+      new THREE.RingGeometry(0.16, ultimate ? 0.28 : 0.22, 28),
+      new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending }),
+    );
+    outer.rotation.x = -Math.PI / 2;
+    outer.position.y = 0.06;
+    root.add(outer);
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(ultimate ? 0.58 : 0.4, ultimate ? 0.035 : 0.024, 6, 24),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending }),
+    );
+    halo.position.y = ultimate ? 0.92 : 0.72;
+    halo.rotation.x = Math.PI / 2;
+    root.add(halo);
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(ultimate ? 0.045 : 0.025, ultimate ? 0.16 : 0.09, ultimate ? 2.25 : 1.55, 8),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending }),
+    );
+    beam.position.y = ultimate ? 1.08 : 0.78;
+    root.add(beam);
+    // The ability id is retained for debugging and lets future effects specialize
+    // without changing the event contract.
+    root.userData.abilityId = ability || kind;
+    state.fx.add(root);
+  }
+
   function tickFx(dt) {
     const dead = [];
     for (const o of state.fx.children) {
       o.userData.life -= dt;
-      if (o.material) o.material.opacity = Math.max(0, o.userData.life * 4);
-      if (o.userData.grow) o.scale.multiplyScalar(1 + dt * 6);
+      const alpha = Math.max(0, Math.min(1, o.userData.life * (o.userData.ability ? 2.5 : 4)));
+      if (o.material) o.material.opacity = alpha;
+      if (o.userData.ability) {
+        o.traverse((child) => {
+          if (child.material) child.material.opacity = alpha * (child === o ? 1 : 0.92);
+        });
+        o.rotation.y += dt * (o.userData.abilityId === 'blink' ? 8 : 3.5);
+      }
+      if (o.userData.grow) o.scale.multiplyScalar(1 + dt * (o.userData.ability ? 3.2 : 6));
       if (o.userData.life <= 0) dead.push(o);
     }
     for (const o of dead) {
       state.fx.remove(o);
-      o.geometry?.dispose();
-      o.material?.dispose();
+      o.traverse((child) => {
+        child.geometry?.dispose();
+        if (child.material) child.material.dispose();
+      });
     }
   }
 
@@ -802,7 +847,7 @@ export function createView(canvas) {
 
   return {
     state, resize, setQuality, buildMap, clearMap, syncBoxes, updateActor, dropMissing,
-    shot, tracer, impact, ring, tickFx, frameCamera, frameFree, menuStage, setShowcase, tickMenu, render, minimap, syncWorld,
+    shot, tracer, impact, ring, abilityFx, tickFx, frameCamera, frameFree, menuStage, setShowcase, tickMenu, render, minimap, syncWorld,
     camera, scene, project,
   };
 }
@@ -898,9 +943,12 @@ function buildActor(player, palette) {
   const ch = getCharacter(player.characterId);
   const v = ch.visual || {};
   const accent = v.accent || '#5cffd6';
-  const bulk = v.bulk || 1;
-  const shoulderL = v.shoulders?.[0] ?? 1;
-  const shoulderR = v.shoulders?.[1] ?? 1;
+  // Operators are meant to read as athletic silhouettes, not broad boxes. Keep
+  // character-specific bulk as a subtle variation and leave clear negative
+  // space around the weapon hand.
+  const bulk = (v.bulk || 1) * 0.84;
+  const shoulderL = (v.shoulders?.[0] ?? 1) * 0.88;
+  const shoulderR = (v.shoulders?.[1] ?? 1) * 0.88;
 
   const teamColor = teamHex(player, palette);
   const clothCol = shade(accent, 0.3);
@@ -913,6 +961,9 @@ function buildActor(player, palette) {
   const teamMat = new THREE.MeshStandardMaterial({ color: teamColor, emissive: teamColor, emissiveIntensity: 0.95, roughness: 0.32, metalness: 0.18 });
 
   const group = new THREE.Group();
+  // A compact, slightly taller silhouette reads as an operator instead of a
+  // floating toy robot and leaves a clean channel for the weapon hand.
+  group.scale.set(0.86, 1.04, 0.92);
   const hips = new THREE.Group();
   hips.position.y = 0.9;
 
@@ -951,10 +1002,13 @@ function buildActor(player, palette) {
     put(headB, accentMat, RBOX(0.06, 0.045, 0.15, 0.015), { y: 0.15, z: 0.03 });
     visor = new THREE.Mesh(xform(SPH(1, 20, 8), { sx: 0.145, sy: 0.035, sz: 0.07, y: 0.0, z: 0.112 }), visorMat);
   } else {
-    put(headB, dark, xform(SPH(0.135, 18, 14), { sx: 1.02, sy: 1.12, sz: 1.05 }));
-    put(headB, dark, xform(SPH(0.1, 14, 10), { sx: 1.0, sy: 0.8, sz: 0.9, y: -0.05, z: 0.04 }));
+    // Squared-off helmet profile: smaller crown, defined jaw, and a narrow
+    // visor keep the head from becoming the widest part of the operator.
+    put(headB, dark, RBOX(0.23, 0.25, 0.2, 0.055), { y: 0.01 });
+    put(headB, dark, RBOX(0.19, 0.095, 0.17, 0.035), { y: -0.065, z: 0.045 });
     put(headB, accentMat, RBOX(0.05, 0.04, 0.13, 0.014), { y: 0.15, z: 0.03 });
-    visor = new THREE.Mesh(xform(SPH(1, 20, 8), { sx: 0.11, sy: 0.032, sz: 0.065, y: 0.008, z: 0.102 }), visorMat);
+    visor = new THREE.Mesh(RBOX(0.16, 0.035, 0.035, 0.012), visorMat);
+    visor.position.set(0, 0.008, 0.108);
   }
   head.add(...bakedMeshes(headB), visor);
   const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.05, 0), teamMat);
@@ -991,8 +1045,8 @@ function buildActor(player, palette) {
   };
   const armL = new THREE.Group();
   const armR = new THREE.Group();
-  armL.position.set(-0.32, 0.42, 0);
-  armR.position.set(0.32, 0.42, 0.08);
+  armL.position.set(-0.27, 0.44, 0);
+  armR.position.set(0.27, 0.44, 0.08);
   const madeL = buildArm(shoulderL);
   const madeR = buildArm(shoulderR);
   armL.add(...madeL.arm.children);
@@ -1020,8 +1074,8 @@ function buildActor(player, palette) {
   };
   const legL = new THREE.Group();
   const legR = new THREE.Group();
-  legL.position.set(-0.12, 0, 0);
-  legR.position.set(0.12, 0, 0);
+  legL.position.set(-0.105, 0, 0);
+  legR.position.set(0.105, 0, 0);
   const kneeL = makeLeg(legL);
   const kneeR = makeLeg(legR);
   if (v.longLegs) { legL.scale.y = 1.1; legR.scale.y = 1.1; }
@@ -1054,12 +1108,12 @@ function buildActor(player, palette) {
   for (const m of bakedMeshes(backB)) upper.add(m);
   if (drone) upper.add(drone);
 
-  const padL = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.14, 2, 6), teamMat);
+  const padL = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.12, 2, 6), dark);
   padL.rotation.z = Math.PI / 2;
-  padL.position.set(-0.34, 0.5, 0.02);
-  const padR = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.14, 2, 6), teamMat);
+  padL.position.set(-0.255, 0.52, 0.02);
+  const padR = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.12, 2, 6), dark);
   padR.rotation.z = Math.PI / 2;
-  padR.position.set(0.34, 0.5, 0.06);
+  padR.position.set(0.255, 0.52, 0.06);
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.26 * bulk, 0.045, 0.018), teamMat);
   stripe.position.set(0, 0.22, 0.175);
   const backMark = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.018), teamMat);

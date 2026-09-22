@@ -700,3 +700,79 @@ label.field.range-field { display: grid; grid-template-columns: 1fr auto; }
   content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.05;
   background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.5) 0 1px, transparent 1px 3px);
 }
+
+/* ── Match HUD refresh ──────────────────────────────────────
+   Keep the combat readout quiet at rest and make the important state changes
+   (kills, ready abilities, reloads) pop without covering the sightline. */
+.kill-counter {
+  position: absolute; left: 28px; top: 28px; z-index: 4;
+  min-width: 116px; padding: 9px 14px 10px 16px;
+  display: grid; grid-template-columns: 1fr auto; column-gap: 14px; align-items: baseline;
+  background: linear-gradient(135deg, rgba(8,13,20,.9), rgba(8,13,20,.58));
+  border: 1px solid rgba(232,238,248,.16); border-left: 3px solid var(--mint);
+  box-shadow: 0 10px 28px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.05);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+}
+.kill-counter-label {
+  grid-column: 1 / -1; color: var(--muted); font: 10px var(--mono); letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.kill-counter strong {
+  color: #fff; font: 700 30px/1 var(--mono); letter-spacing: -.04em; text-shadow: 0 0 16px rgba(92,255,214,.24);
+}
+.kill-counter-caption { color: var(--mint); font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+
+.playerbar { gap: 20px; }
+.playerbar .vitals, .playerbar .ammo {
+  background: linear-gradient(135deg, rgba(8,13,20,.9), rgba(8,13,20,.55));
+  border-color: rgba(232,238,248,.16); box-shadow: 0 10px 28px rgba(0,0,0,.22);
+}
+.playerbar .vitals { border-left-width: 3px; }
+.playerbar .ammo { border-right-width: 3px; }
+.playerbar .ability {
+  width: 132px; height: 72px; padding: 8px 11px; gap: 1px;
+  border-color: rgba(232,238,248,.18); border-radius: 5px; clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+  background: linear-gradient(145deg, rgba(17,27,37,.94), rgba(6,11,17,.82));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 26px rgba(0,0,0,.22);
+  overflow: hidden;
+}
+.playerbar .ability::before {
+  content: ""; position: absolute; left: 0; top: 0; width: 100%; height: 2px;
+  background: var(--mint); opacity: .35;
+}
+.playerbar .ability.ult::before { background: var(--amber); }
+.ability .key { color: #fff; background: rgba(255,255,255,.09); padding: 2px 5px; border-radius: 2px; letter-spacing: .08em; }
+.ability .ability-kind { color: var(--muted); font: 9px var(--mono); letter-spacing: .13em; text-transform: uppercase; }
+.ability strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f3f7ff; font-size: 12px; letter-spacing: .03em; }
+.ability small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
+.ability.ready { border-color: rgba(92,255,214,.78); box-shadow: 0 0 24px rgba(92,255,214,.2), inset 0 0 18px rgba(92,255,214,.05); }
+.ability.ult.ready { border-color: rgba(255,176,58,.85); box-shadow: 0 0 26px rgba(255,176,58,.24), inset 0 0 18px rgba(255,176,58,.06); }
+.ability.cast { animation: abilityCast .62s var(--ease); }
+.ability.cast::after {
+  content: ""; position: absolute; inset: 0; border: 2px solid currentColor; opacity: 0; pointer-events: none;
+  animation: abilitySweep .62s ease-out;
+}
+@keyframes abilityCast { 0% { transform: translateY(2px) scale(.94); filter: brightness(1); } 28% { transform: translateY(0) scale(1.06); filter: brightness(1.7); } 100% { transform: translateY(0) scale(1); filter: brightness(1); } }
+@keyframes abilitySweep { 0% { opacity: .9; transform: scale(.7); } 100% { opacity: 0; transform: scale(1.08); } }
+.ability .cd { inset: 0; background: rgba(3,7,12,.78); backdrop-filter: blur(2px); color: #e8eef8; }
+
+@media (max-width: 850px) {
+  .kill-counter { left: 14px; top: 14px; min-width: 100px; padding: 7px 10px 8px; }
+  .kill-counter strong { font-size: 24px; }
+  .playerbar { left: 10px; right: 10px; gap: 8px; grid-template-columns: minmax(130px, 1fr) minmax(120px, 1fr) minmax(130px, 1fr); }
+  .playerbar .ability { width: 100%; height: 66px; padding: 7px; }
+  .ability small { display: none; }
+}
+@media (max-width: 520px) {
+  .kill-counter { transform: scale(.88); transform-origin: top left; }
+  .playerbar { grid-template-columns: 1fr 1fr; align-items: end; }
+  .playerbar .vitals { grid-column: 1; }
+  .playerbar .ammo { grid-column: 2; }
+  .playerbar .abilities { grid-column: 1 / -1; grid-row: 1; justify-self: center; }
+  .playerbar .ability { width: 104px; height: 54px; }
+  .playerbar .ability strong { font-size: 10px; }
+  .minimap { right: 10px; top: 72px; width: 118px; height: 118px; }
+}
+.ult-meter { position: absolute; left: 11px; right: 11px; bottom: 7px; height: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+.ult-meter span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff8a3d, var(--amber)); box-shadow: 0 0 8px rgba(255,176,58,.7); transition: width .18s var(--ease); }
+.ability.ult.ready .ult-meter span { background: linear-gradient(90deg, var(--amber), #fff0bd); }
