@@ -161,6 +161,64 @@ function weaponGlyph(def, accentColor) {
   </svg>`;
 }
 
+/** Tiny stroke icon per nav entry. */
+function navIcon(id) {
+  const i = {
+    play: '<path d="M5 3l10 5-10 5z"/>',
+    ranked: '<path d="M4 12l4-4 4 4M4 7l4-4 4 4"/>',
+    loadout: '<circle cx="9" cy="9" r="5"/><path d="M9 1v3M9 14v3M1 9h3M14 9h3"/>',
+    characters: '<circle cx="9" cy="5.5" r="3"/><path d="M3 15c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/>',
+    weapons: '<path d="M2 7h12v3h-3l-1 3H8l1-3H6L2 9z"/>',
+    customize: '<path d="M9 2a7 7 0 100 14c1.5 0 2-1 1.4-2s0-2 1.6-2H14a2.5 2.5 0 002-2.5A7 7 0 009 2z"/><circle cx="6" cy="7" r="1"/><circle cx="10" cy="5" r="1"/>',
+    practice: '<circle cx="9" cy="9" r="6"/><circle cx="9" cy="9" r="2.5"/>',
+    custom: '<path d="M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z"/>',
+    profile: '<rect x="2" y="4" width="14" height="11" rx="1.5"/><circle cx="6.5" cy="9" r="1.8"/><path d="M10 8h4M10 11h4"/>',
+    leaders: '<path d="M5 3h8v4a4 4 0 01-8 0zM5 4H2.5a2.5 2.5 0 002.6 3M13 4h2.5a2.5 2.5 0 01-2.6 3M9 11v3M6 15h6"/>',
+    social: '<path d="M2 3h14v9H8l-4 3v-3H2z"/>',
+    settings: '<circle cx="9" cy="9" r="2.6"/><path d="M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M3.7 3.7l2.1 2.1M12.2 12.2l2.1 2.1M14.3 3.7l-2.1 2.1M5.8 12.2l-2.1 2.1"/>',
+    exit: '<path d="M9 2v7M5.5 4.5a5.5 5.5 0 107 0"/>',
+  }[id] || '<circle cx="9" cy="9" r="5"/>';
+  return `<svg class="nico" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${i}</svg>`;
+}
+
+/** Mode glyph for the match-setup cards. */
+function modeIcon(id) {
+  const i = {
+    team_fracture: '<path d="M3 3l5 5M15 3l-5 5M3 15l5-5M15 15l-5-5"/><circle cx="9" cy="9" r="1.6"/>',
+    free_fracture: '<circle cx="9" cy="9" r="5.5"/><path d="M9 1v4M9 13v4M1 9h4M13 9h4"/>',
+    dominion: '<path d="M5 16V3M5 3h8l-2 2.5L13 8H5"/>',
+    pulsepoint: '<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3.4"/><circle cx="9" cy="9" r="0.8" fill="currentColor"/>',
+    core_run: '<path d="M9 1.5l6 7.5-6 7.5-6-7.5z"/><circle cx="9" cy="9" r="1.6"/>',
+    last_circuit: '<circle cx="9" cy="7" r="4.5"/><path d="M6.5 11v4M9 11.5v4M11.5 11v4"/>',
+    arsenal_march: '<path d="M2 6h14M2 6v4h3l1.5 3h2L10 10h6V6"/><circle cx="5" cy="4" r="1"/>',
+    ranked_circuit: '<path d="M4 13l5-5 5 5M4 8l5-5 5 5"/>',
+  }[id] || '<circle cx="9" cy="9" r="5"/>';
+  return `<svg class="mico" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${i}</svg>`;
+}
+
+/** Top-down SVG thumbnail rendered from the map's collision boxes. */
+function mapThumb(m) {
+  const b = m.bounds;
+  const S = 96;
+  const sx = S / (b.maxX - b.minX);
+  const sz = S / (b.maxZ - b.minZ);
+  const X = (x) => (x - b.minX) * sx;
+  const Z = (z) => (z - b.minZ) * sz;
+  let rects = '';
+  for (const box of m.boxes || []) {
+    if (box.boundary || box.visual || box.max.y < 0.4 || box.min.y > 3) continue;
+    const w = (box.max.x - box.min.x) * sx;
+    const h = (box.max.z - box.min.z) * sz;
+    if (w < 1.2 || h < 1.2) continue;
+    const fill = box.mat === 'glass' ? 'rgba(122,240,255,0.3)' : box.mat === 'neon' ? 'rgba(92,255,214,0.55)' : box.mat === 'metal' ? '#31435a' : '#243348';
+    rects += `<rect x="${X(box.min.x).toFixed(1)}" y="${Z(box.min.z).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}"/>`;
+  }
+  const objs = (m.objectives || []).map((o) => `<circle cx="${X(o.x).toFixed(1)}" cy="${Z(o.z).toFixed(1)}" r="3.2" fill="none" stroke="rgba(255,176,58,0.85)" stroke-width="1.2"/>`).join('');
+  const sp = (m.spawns ? [...(m.spawns.a || []), ...(m.spawns.b || [])] : []);
+  const dots = sp.slice(0, 10).map((p, i) => `<circle cx="${X(p.x).toFixed(1)}" cy="${Z(p.z).toFixed(1)}" r="1.4" fill="${i < (m.spawns?.a?.length || 0) ? 'rgba(46,200,255,0.8)' : 'rgba(255,90,60,0.8)'}"/>`).join('');
+  return `<svg class="map-thumb" viewBox="0 0 96 96" aria-hidden="true"><rect width="96" height="96" fill="#0a121c"/><g stroke="rgba(92,255,214,0.07)"><path d="M0 24H96M0 48H96M0 72H96M24 0V96M48 0V96M72 0V96"/></g>${rects}${objs}${dots}</svg>`;
+}
+
 const brandLogo = (size = 42) => `<svg class="marksvg" width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true">
   <defs><linearGradient id="vb-grad" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0%" stop-color="#5cffd6"/><stop offset="100%" stop-color="#2ec8ff"/>
@@ -181,6 +239,7 @@ export function mountUI(root, game) {
         </div>
       </div>
       <div class="top-actions">
+        <div class="profile-chip" id="profile-chip"></div>
         <button class="ghost" data-act="resume" id="menu-resume" hidden data-i18n="play.resume"></button>
         <button class="ghost settings-shortcut" data-act="nav" data-id="settings" data-i18n="menu.settings"></button>
         <div class="lang" role="group" aria-label="language">
@@ -274,11 +333,21 @@ export function refresh(game) {
   const groups = [ ['nav.compete', ['play', 'ranked', 'practice', 'custom']], ['nav.operator', ['loadout', 'characters', 'weapons', 'customize']], ['nav.community', ['profile', 'leaders', 'social']], ['nav.system', ['settings', 'exit']] ];
   nav.innerHTML = groups.map(([label, ids]) => `<div class="nav-group"><p>${esc(game.t(label))}</p>${ids.map((id) => {
     const key = NAV.find((n) => n[0] === id)[1];
-    return `<button data-act="nav" data-id="${id}" ${game.screen === id ? 'aria-current="page"' : ''} class="${game.screen === id ? 'on' : ''}">${esc(game.t(key))}</button>`;
+    return `<button data-act="nav" data-id="${id}" ${game.screen === id ? 'aria-current="page"' : ''} class="${game.screen === id ? 'on' : ''}">${navIcon(id)}<span>${esc(game.t(key))}</span></button>`;
   }).join('')}</div>`).join('');
   if (game.inMatch) nav.innerHTML = `<div class="nav-group"><p>${esc(game.t('controls.paused'))}</p><button data-act="resume">${esc(game.t('play.resume'))}</button><button class="on" data-act="nav" data-id="settings">${esc(game.t('menu.settings'))}</button><button data-act="leave">${esc(game.t('play.leave'))}</button></div>`;
   document.querySelectorAll('#lang-en, #lang-it').forEach((b) => b.classList.toggle('on', b.dataset.lang === game.i18n.lang));
   document.documentElement.lang = game.i18n.lang;
+  const chip = document.getElementById('profile-chip');
+  if (chip) {
+    if (game.inMatch) { chip.innerHTML = ''; chip.hidden = true; }
+    else {
+      chip.hidden = false;
+      const lv = levelFromXp(game.profile.xp || 0);
+      const rk = rankFor(game.profile.rank?.rating || 0);
+      chip.innerHTML = `<span class="pc-avatar">${esc((game.profile.name || 'V').slice(0, 1).toUpperCase())}</span><span class="pc-meta"><strong>${esc(game.profile.name || 'VECTOR')}</strong><em>${esc(game.t('profile.level'))} ${lv.level} · ${esc(game.t('rank.' + rk.id))}</em></span>`;
+    }
+  }
   const foot = document.getElementById('foot-season');
   if (foot) foot.textContent = game.t('menu.version');
   const status = document.getElementById('foot-status');
@@ -304,11 +373,23 @@ function renderPanel(game) {
   document.getElementById('shell').classList.toggle('home', home);
   const hero = document.getElementById('menu-hero');
   hero.classList.toggle('hidden', !home);
-  if (home) hero.innerHTML = `
-    <div><p class="kicker">${esc(game.t('menu.version'))}</p><h2>${esc(game.t('home.title'))}</h2><p class="hero-copy">${esc(game.t('home.desc'))}</p></div>
-    <div class="hero-bottom"><span class="live-badge">${esc(game.t('home.ready'))}</span><h3>${esc(game.t(CHARACTERS.find((c) => c.id === (game.activeCharacter?.() || game.profile.loadouts?.[game.profile.activeLoadout || 0]?.characterId || 'ryn'))?.nameKey || ''))}</h3>
+  if (home) {
+    const lv = levelFromXp(game.profile.xp || 0);
+    const rk = rankFor(game.profile.rank?.rating || 0);
+    const st = game.profile.stats || {};
+    const opName = game.t(CHARACTERS.find((c) => c.id === (game.activeCharacter?.() || game.profile.loadouts?.[game.profile.activeLoadout || 0]?.characterId || 'ryn'))?.nameKey || '');
+    hero.innerHTML = `
+    <div><p class="kicker">${esc(game.t('menu.version'))}</p><h2 class="hero-title">${esc(game.t('home.title'))}</h2><p class="hero-copy">${esc(game.t('home.desc'))}</p>
+    <div class="hero-stats">
+      <span class="hstat"><em>${esc(game.t('profile.level'))}</em><strong>${lv.level}</strong></span>
+      <span class="hstat"><em>${esc(game.t('menu.ranked'))}</em><strong>${esc(game.t('rank.' + rk.id))}</strong></span>
+      <span class="hstat"><em>${esc(game.t('profile.wins'))}</em><strong>${st.wins || 0}</strong></span>
+      <span class="hstat"><em>${esc(game.t('hud.elim'))}</em><strong>${st.kills || 0}</strong></span>
+    </div></div>
+    <div class="hero-bottom"><span class="live-badge">${esc(game.t('home.ready'))}</span><h3>${esc(opName)}</h3>
     <button class="ghost" data-act="nav" data-id="loadout">${esc(game.t('home.edit'))} ↗</button>
     <div class="quick-links"><button data-act="tutorial">${esc(game.t('menu.tutorial'))} <span>↗</span></button><button data-act="range">${esc(game.t('home.range'))} <span>↗</span></button></div></div>`;
+  }
   panel.innerHTML = (screens[game.screen] || playScreen)(game);
   if (optionsOpen && panel.querySelector('.match-options')) panel.querySelector('.match-options').open = true;
   if (focused?.act) {
@@ -323,10 +404,10 @@ function playScreen(game) {
   const selected = modes.find((m) => m.id === d.modeId) || modes[0];
   return `<div class="play-heading"><p class="kicker">01 / ${esc(game.t('menu.play'))}</p><h2>${esc(game.t('home.setup'))}</h2><p class="lead">${esc(game.t('home.setup_hint'))}</p></div>
     <section class="setup-section"><h3>${esc(game.t('play.mode'))}</h3>
-    <div class="mode-grid">${modes.map((m, i) => `<button class="mode-card ${m.id === d.modeId ? 'on' : ''}" data-act="mode" data-id="${m.id}" aria-pressed="${m.id === d.modeId}"><span class="mode-index">${String(i + 1).padStart(2, '0')}</span><strong>${esc(game.t(m.nameKey))}</strong><span class="mode-check">${m.id === d.modeId ? '●' : '○'}</span></button>`).join('')}</div><p class="fine mode-description">${esc(game.t(selected.descKey))}</p></section>
-    <section class="setup-section"><h3>${esc(game.t('play.map'))}</h3><div class="row">
-      ${chip('map', 'random', game.t('play.random'), d.mapId === 'random')}
-      ${maps.map((m) => chip('map', m.id, game.t(m.nameKey), d.mapId === m.id)).join('')}</div></section>
+    <div class="mode-grid">${modes.map((m, i) => `<button class="mode-card ${m.id === d.modeId ? 'on' : ''}" data-act="mode" data-id="${m.id}" aria-pressed="${m.id === d.modeId}"><span class="mode-ico">${modeIcon(m.id)}</span><span class="mode-txt"><span class="mode-index">${String(i + 1).padStart(2, '0')}</span><strong>${esc(game.t(m.nameKey))}</strong></span><span class="mode-check">${m.id === d.modeId ? '●' : '○'}</span></button>`).join('')}</div><p class="fine mode-description">${esc(game.t(selected.descKey))}</p></section>
+    <section class="setup-section"><h3>${esc(game.t('play.map'))}</h3><div class="map-grid">
+      <button class="map-card ${d.mapId === 'random' ? 'on' : ''}" data-act="map" data-id="random" aria-pressed="${d.mapId === 'random'}"><span class="map-thumb random"><svg viewBox="0 0 96 96" aria-hidden="true"><path d="M20 30h24M20 30l10-10M20 30l10 10M76 66H52M76 66L66 56M76 66l-10 10M62 26l-28 44" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span><strong>${esc(game.t('play.random'))}</strong></button>
+      ${maps.map((m) => `<button class="map-card ${d.mapId === m.id ? 'on' : ''}" data-act="map" data-id="${m.id}" aria-pressed="${d.mapId === m.id}">${mapThumb(m)}<strong>${esc(game.t(m.nameKey))}</strong></button>`).join('')}</div></section>
     <section class="setup-section"><h3>${esc(game.t('play.difficulty'))}</h3><div class="row">${DIFFICULTY_IDS.map((id) => chip('diff', id, game.t('diff.' + id), d.difficulty === id)).join('')}</div></section>
     <details class="match-options"><summary>${esc(game.t('home.options'))}</summary><div class="stack">
       <div class="row">${chip('team', 'a', game.t('score.team_a'), d.team === 'a')}${chip('team', 'b', game.t('score.team_b'), d.team === 'b')}</div>
