@@ -123,6 +123,7 @@ function tickLocal(dt) {
   const match = game.match;
   if (!match) return;
   acc += dt;
+  if (acc > DT * 4) acc = DT * 4; // drop backlog after a stall instead of burst-stepping (teleporting)
   const player = match.players.find((p) => p.id === game.localId);
   if (!player) return;
   if (!game.paused) {
@@ -147,11 +148,59 @@ function tickLocal(dt) {
   if (match.phase === 'ended' && !game.resultsShown) finishLocal(match);
 }
 
+/**
+ * Relay mode presents server snapshots (20 Hz). For our own character we
+ * integrate the last known velocity at the render rate and gently converge on
+ * each new snapshot — the character glides instead of stepping in 50 ms jumps,
+ * while the server stays authoritative (large corrections, e.g. respawn, snap).
+ */
+function smoothLocalPlayer(raw, snap, dt) {
+  if (game.replayMode || game.freeCam) return;
+  let sm = game._localSmooth;
+  if (!sm) {
+    game._localSmooth = sm = {
+      x: raw.x, y: raw.y, z: raw.z,
+      vx: raw.vx || 0, vy: raw.vy || 0, vz: raw.vz || 0,
+      correctedFor: snap.time, alive: !!raw.alive,
+    };
+    return;
+  }
+  if (raw.alive !== sm.alive) {
+    // Spawn or death: adopt the server position immediately.
+    sm.x = raw.x; sm.y = raw.y; sm.z = raw.z;
+    sm.vx = raw.vx || 0; sm.vy = raw.vy || 0; sm.vz = raw.vz || 0;
+    sm.alive = !!raw.alive;
+    sm.correctedFor = snap.time;
+  }
+  sm.x += (raw.vx || 0) * dt;
+  sm.y += (raw.vy || 0) * dt;
+  sm.z += (raw.vz || 0) * dt;
+  if (snap.time > sm.correctedFor + 1e-6) {
+    const dts = Math.min(0.3, Math.max(0, snap.time - sm.correctedFor));
+    // Where the server should place us, trapezoid between the old and new velocity.
+    const ex = sm.x + ((sm.vx + (raw.vx || 0)) * 0.5) * dts;
+    const ey = sm.y + ((sm.vy + (raw.vy || 0)) * 0.5) * dts;
+    const ez = sm.z + ((sm.vz + (raw.vz || 0)) * 0.5) * dts;
+    const eX = raw.x - ex, eY = raw.y - ey, eZ = raw.z - ez;
+    if (Math.hypot(eX, eZ) > 3 || Math.abs(eY) > 1.5) {
+      sm.x = raw.x; sm.y = raw.y; sm.z = raw.z; // teleport-class correction
+    } else {
+      sm.x += eX * 0.45;
+      sm.y += eY * 0.45;
+      sm.z += eZ * 0.45;
+    }
+    sm.correctedFor = snap.time;
+  }
+  sm.vx = raw.vx || 0; sm.vy = raw.vy || 0; sm.vz = raw.vz || 0;
+  raw.x = sm.x; raw.y = sm.y; raw.z = sm.z;
+}
+
 function tickRelay(dt) {
   const snap = game.snap;
   if (!snap) return;
   const raw = (snap.players || []).find((p) => p.id === game.localId);
   if (!raw) return;
+  if (!game.paused && !game.replayMode && !game.freeCam) smoothLocalPlayer(raw, snap, dt);
   const look = { ...raw, yaw: game.yaw, pitch: game.pitch };
   if (!game.paused) {
     const simInput = gatherInput(look);
@@ -262,19 +311,25 @@ function gatherInput(player) {
   if (input.held('back')) my -= 1;
   if (input.held('right')) mx += 1;
   if (input.held('left')) mx -= 1;
-  mx += pad.moveX || 0;
-  my += pad.moveY || 0;
+  // Only a *connected* pad contributes axes; stale values from a dropped pad must not move the character.
+  if (pad.active) {
+    mx += pad.moveX || 0;
+    my += pad.moveY || 0;
+  }
+  const wheel = input.mouse.wheel;
+  game._wheel = wheel;
   const look = input.consumeLook();
   const ads = player.aiming ? (s.adsSens || 0.7) : 1;
   const sens = (s.sens || 1.1) * 0.0022 * ads;
   const invert = s.invertY ? -1 : 1;
   game.yaw += look.x * sens;
   game.pitch += look.y * sens * invert;
-  const keyLook = 1.7 * (1 / 60);
-  if (input.held('lookLeft')) game.yaw -= keyLook * 8;
-  if (input.held('lookRight')) game.yaw += keyLook * 8;
-  if (input.held('lookUp')) game.pitch += keyLook * 6 * invert;
-  if (input.held('lookDown')) game.pitch -= keyLook * 6 * invert;
+  // Keyboard look is capped to a sane rate (a held arrow should turn, not spin).
+  const keyLook = 2.4 * (1 / 60);
+  if (input.held('lookLeft')) game.yaw -= keyLook;
+  if (input.held('lookRight')) game.yaw += keyLook;
+  if (input.held('lookUp')) game.pitch += keyLook * 0.82 * invert;
+  if (input.held('lookDown')) game.pitch -= keyLook * 0.82 * invert;
   if (pad.active) {
     game.yaw += pad.lookX;
     game.pitch += pad.lookY * invert;
@@ -299,6 +354,7 @@ function gatherInput(player) {
   if (!s.holdAim && (input.mouse.downR || input.padEdge('aim'))) game.aimOn = !game.aimOn;
   if (!s.holdAim) aim = !!game.aimOn;
   const slot = edgeSlot();
+  game._wheel = 0;
   if (slot >= 0) game.slot = slot;
   const chat = edge('chat');
   if (chat) game.chatOpen = !game.chatOpen;
@@ -336,7 +392,8 @@ function edgeSlot() {
   if (pressed('slot1')) return 0;
   if (pressed('slot2')) return 1;
   if (pressed('slot3')) return 2;
-  const w = input.mouse.wheel;
+  // Wheel is snapshotted before consumeLook() zeroes it, so scroll-to-swap works.
+  const w = game._wheel ?? 0;
   const cur = game.match?.players?.find((p) => p.id === game.localId)?.weaponSlot ?? game.slot ?? 0;
   if (w > 0) return (cur + 1) % 3;
   if (w < 0) return (cur + 2) % 3;
@@ -639,6 +696,7 @@ function enterMatch(match, relay) {
   game.inMatch = true;
   game.relayLive = relay;
   game.matchMap = match.map;
+  game._localSmooth = null;
   if (view.state.menuRig) {
     view.scene.remove(view.state.menuRig);
     view.state.menuRig = null;
@@ -684,8 +742,16 @@ game.leaveMatch = () => {
   game.editor = null;
   game.replayMode = false;
   game.match = null;
+  // Clear per-match control state so a toggled crouch/aim never carries into the next match.
+  game.crouchOn = false;
+  game.aimOn = false;
+  game.slot = 0;
+  game.spectateId = null;
+  game.chatOpen = false;
+  game._localSmooth = null;
   input.capture = false;
   input.exitLock();
+  input.keys.clear();
   showHUD(false);
   document.getElementById('overlays').innerHTML = '';
   bootMenu();

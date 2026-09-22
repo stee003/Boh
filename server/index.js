@@ -10,7 +10,7 @@ import { MODES, getMode, QUICK_CHAT } from '../shared/modes.js';
 import { STRINGS } from '../shared/strings.js';
 import { computeRewards } from '../shared/progression.js';
 import {
-  consumeEvents, createMatch, endMatch, historyPose, publicPlayer, setInput, stepMatch, summarize,
+  consumeEvents, createMatch, decayStaleInputs, endMatch, historyPose, publicPlayer, setInput, stepMatch, summarize,
 } from '../shared/sim/match.js';
 import { inputAge, rewindSeconds, sanitizeInput, sanitizeLoadout, sanitizeName, sanitizeReport, sanitizeRules } from './guard.js';
 import {
@@ -339,6 +339,8 @@ function tickRooms(dt, now) {
       continue;
     }
     room.acc += dt;
+    // A player who stopped sending input (paused, tab hidden, connection hiccup) must stop moving.
+    decayStaleInputs(room.match, 0.3);
     let steps = 0;
     while (room.acc >= TICK && steps < 4) {
       stepMatch(room.match, TICK);

@@ -21,13 +21,162 @@ const NAV = [
   ['exit', 'menu.exit'],
 ];
 
+const hexA = (hexColor, a) => {
+  const h = (hexColor || '#ffffff').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+
+function corners(color) {
+  const s = 'stroke-width="2.5" stroke-linecap="square"';
+  return `<g fill="none" stroke="${color}" ${s} opacity="0.9">
+    <path d="M6 22 V6 H22"/><path d="M98 6 H114 V22"/><path d="M114 98 V114 H98"/><path d="M22 114 H6 V98"/>
+  </g>`;
+}
+
+/** Vector operator bust generated from the character's visual spec. */
+function opPortrait(c, teamColor) {
+  const v = c.visual || {};
+  const A = v.accent || '#5cffd6';
+  const TC = teamColor || A;
+  const bulk = v.bulk || 1;
+  const sl = v.shoulders?.[0] ?? 1;
+  const sr = v.shoulders?.[1] ?? 1;
+  const cx = 60;
+  const hw = 26 * bulk; // torso half-width
+  const shY = 92 - (sl + sr) * 4; // shoulder line drops when bulky
+  let body = '';
+  // Back gear peeking over the shoulders
+  if (v.back === 'plate') body += `<path d="M${cx - hw * 0.72} ${shY + 2} h${hw * 1.44} v-9 h-${hw * 1.44} z" fill="#1b2330" stroke="${hexA(A, 0.5)}"/>`;
+  if (v.back === 'pack') {
+    body += `<path d="M${cx - hw * 0.8} ${shY + 2} h${hw * 1.6} v-10 h-${hw * 1.6} z" fill="#1b2330"/>`;
+    body += `<rect x="${cx - hw * 0.45}" y="${shY - 9}" width="5" height="8" fill="${A}" opacity="0.85"/>`;
+    body += `<rect x="${cx + hw * 0.45 - 5}" y="${shY - 9}" width="5" height="8" fill="${A}" opacity="0.85"/>`;
+  }
+  if (v.back === 'drone') {
+    body += `<g><rect x="${cx + hw * 0.42}" y="${shY - 16}" width="16" height="6" rx="2" fill="#cfd6e0"/>`;
+    body += `<rect x="${cx + hw * 0.42 + 4}" y="${shY - 14}" width="8" height="2.4" fill="${A}"/></g>`;
+  }
+  // Torso: asymmetric shoulder masses
+  const lCap = 10 * sl;
+  const rCap = 10 * sr;
+  body += `<path d="M${cx - hw} 118 L${cx - hw} ${shY + 10}
+    Q${cx - hw - lCap} ${shY} ${cx - hw + 6} ${shY - 4}
+    L${cx - 10} ${shY - 8} L${cx + 10} ${shY - 8}
+    L${cx + hw - 6} ${shY - 4}
+    Q${cx + hw + rCap} ${shY} ${cx + hw} ${shY + 10}
+    L${cx + hw} 118 Z" fill="#151c27" stroke="rgba(232,238,248,0.16)"/>`;
+  // Chest plate + accent core
+  body += `<path d="M${cx - hw * 0.62} 118 L${cx - hw * 0.62} ${shY + 2} L${cx + hw * 0.62} ${shY + 2} L${cx + hw * 0.62} 118 Z" fill="#1d2531"/>`;
+  body += `<rect x="${cx - 5}" y="${shY + 8}" width="10" height="4" rx="1.5" fill="${A}"/>`;
+  if (v.coat) {
+    body += `<path d="M${cx - hw} 118 L${cx - hw + 3} ${shY + 14} L${cx + hw - 3} ${shY + 14} L${cx + hw} 118 Z" fill="#10151d"/>`;
+    body += `<path d="M${cx - hw + 3} ${shY + 14} H${cx + hw - 3}" stroke="${hexA(A, 0.6)}" stroke-width="1.5"/>`;
+  }
+  if (v.sash) {
+    body += `<path d="M${cx - hw * 0.85} ${shY + 4} L${cx + hw * 0.25} ${shY + 4} L${cx + hw * 0.42} 118 L${cx + hw * 0.1} 118 Z" fill="${A}" opacity="0.75"/>`;
+  }
+  if (v.seam) {
+    body += `<path d="M${cx - hw * 0.62} ${shY + 4} V118 M${cx + hw * 0.62} ${shY + 4} V118" stroke="${hexA(A, 0.55)}" stroke-width="1.5"/>`;
+  }
+  // Neck
+  body += `<rect x="${cx - 7}" y="${shY - 14}" width="14" height="10" fill="#0e131b"/>`;
+  // Head variants
+  const headY = shY - 16;
+  if (v.head === 'hood') {
+    body += `<path d="M${cx - 21} ${headY + 24} L${cx - 17} ${headY - 6} Q${cx} ${headY - 16} ${cx + 17} ${headY - 6} L${cx + 21} ${headY + 24} Q${cx} ${headY + 32} ${cx - 21} ${headY + 24} Z" fill="#1a212d" stroke="rgba(232,238,248,0.18)"/>`;
+    body += `<path d="M${cx - 14} ${headY + 22} L${cx - 11} ${headY} Q${cx} ${headY - 7} ${cx + 11} ${headY} L${cx + 14} ${headY + 22} Q${cx} ${headY + 27} ${cx - 14} ${headY + 22} Z" fill="#070a0f"/>`;
+    body += `<rect x="${cx - 10}" y="${headY + 8}" width="20" height="3.6" rx="1.8" fill="${TC}"/>`;
+    body += `<rect x="${cx - 10}" y="${headY + 8}" width="20" height="3.6" rx="1.8" fill="${TC}" opacity="0.35" transform="scale(1.25)" style="transform-origin:${cx}px ${headY + 9.8}px"/>`;
+  } else if (v.head === 'wide') {
+    body += `<rect x="${cx - 22}" y="${headY - 8}" width="44" height="32" rx="7" fill="#181f2b" stroke="rgba(232,238,248,0.18)"/>`;
+    body += `<rect x="${cx - 18}" y="${headY + 4}" width="36" height="10" rx="3" fill="#070a0f"/>`;
+    body += `<rect x="${cx - 16}" y="${headY + 7}" width="32" height="4.4" rx="2" fill="${TC}"/>`;
+    body += `<rect x="${cx - 4}" y="${headY - 4}" width="8" height="3" rx="1.5" fill="${A}"/>`;
+  } else {
+    body += `<rect x="${cx - 17}" y="${headY - 6}" width="34" height="30" rx="6" fill="#181f2b" stroke="rgba(232,238,248,0.18)"/>`;
+    body += `<rect x="${cx - 13}" y="${headY + 5}" width="26" height="8" rx="3" fill="#070a0f"/>`;
+    body += `<rect x="${cx - 11}" y="${headY + 7.4}" width="22" height="3.8" rx="1.9" fill="${TC}"/>`;
+    body += `<path d="M${cx - 9} ${headY - 2} H${cx + 9}" stroke="${A}" stroke-width="2.4"/>`;
+  }
+  if (v.antenna) {
+    body += `<path d="M${cx + 15} ${headY - 2} L${cx + 24} ${headY - 14}" stroke="#8b97ad" stroke-width="2"/>`;
+    body += `<circle cx="${cx + 25}" cy="${headY - 16}" r="2.6" fill="${A}"/>`;
+  }
+  return `<svg class="portrait" viewBox="0 0 120 120" role="img" aria-label="${esc(c.id)}">
+    <defs><radialGradient id="pg-${c.id}" cx="50%" cy="34%" r="75%">
+      <stop offset="0%" stop-color="${hexA(A, 0.28)}"/><stop offset="55%" stop-color="${hexA(A, 0.07)}"/><stop offset="100%" stop-color="rgba(7,9,14,0)"/>
+    </radialGradient></defs>
+    <rect width="120" height="120" fill="#0a0f16"/>
+    <rect width="120" height="120" fill="url(#pg-${c.id})"/>
+    <g stroke="${hexA(A, 0.14)}"><path d="M0 30 H120 M0 60 H120 M0 90 H120 M30 0 V120 M60 0 V120 M90 0 V120"/></g>
+    <g transform="translate(0,4)">${body}</g>
+    ${corners(hexA(A, 0.8))}
+  </svg>`;
+}
+
+/** Side-profile weapon silhouette generated from the weapon's visual spec. */
+function weaponGlyph(def, accentColor) {
+  const v = def.visual || {};
+  const A = accentColor || v.accent || '#5cffd6';
+  const body = v.color || '#9eb0c2';
+  const dark = '#2a3340';
+  let s = '';
+  if (v.blade) {
+    s += `<path d="M42 27 L138 24.5 L138 29.5 L42 33 Z" fill="${body}"/>`;
+    s += `<path d="M42 27.5 L138 25" stroke="${A}" stroke-width="1.6"/>`;
+    s += `<rect x="38" y="22" width="5" height="14" rx="1.5" fill="${dark}"/>`;
+    s += `<path d="M20 26 L38 26 L38 32 L24 32 Q18 29 20 26 Z" fill="${dark}"/>`;
+  } else if (v.fist) {
+    s += `<rect x="46" y="18" width="42" height="26" rx="9" fill="${body}"/>`;
+    s += `<circle cx="56" cy="18" r="3.4" fill="${dark}"/><circle cx="67" cy="18" r="3.4" fill="${dark}"/><circle cx="78" cy="18" r="3.4" fill="${dark}"/>`;
+    s += `<rect x="58" y="26" width="20" height="4" rx="2" fill="${A}"/>`;
+  } else {
+    const barrel = 18 + (v.barrel || 0.4) * 52;
+    s += `<rect x="34" y="21" width="32" height="13" rx="2" fill="${body}"/>`;
+    s += `<rect x="34" y="18.6" width="36" height="3" rx="1.4" fill="${dark}"/>`;
+    s += `<rect x="66" y="24" width="${barrel}" height="5.6" rx="1.4" fill="${dark}"/>`;
+    s += `<rect x="${66 + barrel - 2.4}" y="23" width="2.6" height="7.6" rx="1" fill="${body}"/>`;
+    s += `<path d="M68 34 L80 34 L76 46 L66 46 Z" fill="${dark}"/>`;
+    if (v.stock) s += `<path d="M34 22 L18 26 L18 36 L34 34 Z" fill="${dark}"/>`;
+    if (v.mag === 'drum') s += `<circle cx="58" cy="40" r="9" fill="${body}"/><circle cx="58" cy="40" r="3.4" fill="${dark}"/>`;
+    else if (v.mag === 'cell') s += `<rect x="52" y="34" width="14" height="11" rx="2" fill="${A}"/>`;
+    else if (v.mag === 'straight') s += `<path d="M52 34 L66 34 L63 48 L50 48 Z" fill="${dark}"/>`;
+    if (v.optic === 'holo') {
+      s += `<rect x="46" y="9" width="20" height="9" rx="2" fill="none" stroke="${dark}" stroke-width="2.4"/>`;
+      s += `<circle cx="56" cy="13.5" r="2.2" fill="${A}"/>`;
+    } else if (v.optic === 'scope') {
+      s += `<rect x="44" y="8" width="28" height="8" rx="4" fill="${dark}"/>`;
+      s += `<circle cx="70" cy="12" r="3.2" fill="${A}"/>`;
+    } else {
+      s += `<rect x="48" y="14" width="2.6" height="5" fill="${dark}"/><rect x="60" y="14" width="2.6" height="5" fill="${dark}"/>`;
+    }
+    s += `<rect x="36" y="26.5" width="28" height="2.2" fill="${A}" opacity="0.9"/>`;
+  }
+  return `<svg class="wpnglyph" viewBox="0 0 160 64" role="img" aria-label="${esc(def.id)}">
+    <rect width="160" height="64" fill="#0a0f16"/>
+    <g stroke="${hexA(A, 0.12)}"><path d="M0 21 H160 M0 43 H160 M40 0 V64 M120 0 V64"/></g>
+    ${s}
+    ${corners(hexA(A, 0.55))}
+  </svg>`;
+}
+
+const brandLogo = (size = 42) => `<svg class="marksvg" width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true">
+  <defs><linearGradient id="vb-grad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#5cffd6"/><stop offset="100%" stop-color="#2ec8ff"/>
+  </linearGradient></defs>
+  <path d="M24 3 L43 24 L24 45 L5 24 Z" fill="none" stroke="url(#vb-grad)" stroke-width="2.6"/>
+  <path d="M24 12 L35 24 L24 36 L13 24 Z" fill="rgba(92,255,214,0.12)" stroke="rgba(92,255,214,0.55)" stroke-width="1.4"/>
+  <path d="M24 20 L29 24 L24 28 L19 24 Z" fill="#ffb03a"/>
+</svg>`;
+
 export function mountUI(root, game) {
   root.innerHTML = `
     <div class="shell" id="shell">
       <div class="brand">
-        <div class="mark" aria-hidden="true"></div>
+        <div class="mark" aria-hidden="true">${brandLogo(46)}</div>
         <div>
-          <h1>VECTORBREAK</h1>
+          <h1>VECTOR<span>BREAK</span></h1>
           <p data-i18n="meta.tagline"></p>
         </div>
       </div>
@@ -200,10 +349,17 @@ function loadoutScreen(game) {
   const i = game.profile.activeLoadout || 0;
   const load = kits[i] || kits[0];
   const ch = CHARACTERS.find((c) => c.id === load?.characterId) || CHARACTERS[0];
+  const accent = ch.visual?.accent || '#5cffd6';
   return `
     <p class="kicker">${esc(game.t('menu.loadout'))}</p>
-    <h2>${esc(game.t(ch.nameKey))}</h2>
-    <div class="row">${kits.map((k, n) => `<button class="chip ${n === i ? 'on' : ''}" data-act="kit" data-i="${n}">${esc(k.name || game.t('kit.slot', { n: n + 1 }))}</button>`).join('')}</div>
+    <div class="op-head" style="--op:${accent}">
+      <div class="op-art small">${opPortrait(ch)}</div>
+      <div>
+        <h2>${esc(game.t(ch.nameKey))}</h2>
+        <p class="fine">${esc(game.t(ch.roleKey))} · ${esc(game.t(ch.tacticalKey))} · ${esc(game.t(ch.ultimateKey))}</p>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">${kits.map((k, n) => `<button class="chip ${n === i ? 'on' : ''}" data-act="kit" data-i="${n}">${esc(k.name || game.t('kit.slot', { n: n + 1 }))}</button>`).join('')}</div>
     <p class="fine">${esc(game.t(ch.tacticalKey))} · ${esc(game.t(ch.ultimateKey))}</p>
     ${weaponCard(game, 'primary', load)}
     ${weaponCard(game, 'secondary', load)}
@@ -234,15 +390,24 @@ function characterScreen(game) {
   return `
     <p class="kicker">${esc(game.t('menu.operators'))}</p>
     <h2>${esc(game.t('kit.operator'))}</h2>
-    <div class="stack">
-      ${CHARACTERS.map((c) => `
-        <button class="card ${id === c.id ? 'on' : ''}" data-act="char" data-id="${c.id}" style="text-align:left">
-          <h3><span class="swatch" style="background:${c.visual?.accent || '#5cffd6'}"></span>${esc(game.t(c.nameKey))} · ${esc(game.t(c.roleKey))}</h3>
-          <p>${esc(game.t(c.blurbKey))}</p>
-          <p class="fine">${esc(game.t(c.passiveKey))}</p>
-          <p class="fine">${esc(game.t(c.tacticalKey))}</p>
-          <p class="fine">${esc(game.t(c.ultimateKey))}</p>
-        </button>`).join('')}
+    <div class="op-grid">
+      ${CHARACTERS.map((c) => {
+        const accent = c.visual?.accent || '#5cffd6';
+        const on = id === c.id;
+        return `
+        <button class="op-card ${on ? 'on' : ''}" data-act="char" data-id="${c.id}" style="--op:${accent}">
+          <div class="op-art">${opPortrait(c)}</div>
+          <div class="op-info">
+            <h3>${esc(game.t(c.nameKey))}<em>${esc(game.t(c.roleKey))}</em></h3>
+            <p>${esc(game.t(c.blurbKey))}</p>
+            <div class="op-abilities">
+              <span class="fine" title="${esc(game.t(c.passiveKey))}">● ${esc(game.t(c.passiveKey))}</span>
+              <span class="fine" title="${esc(game.t(c.tacticalKey))}">◧ ${esc(game.t(c.tacticalKey))}</span>
+              <span class="fine" title="${esc(game.t(c.ultimateKey))}">◆ ${esc(game.t(c.ultimateKey))}</span>
+            </div>
+          </div>
+        </button>`;
+      }).join('')}
     </div>`;
 }
 
@@ -250,10 +415,17 @@ function weaponScreen(game) {
   const id = game.inspectId || 'linecut';
   const def = WEAPON_LIST.find((w) => w.id === id) || WEAPON_LIST[0];
   const cats = [...new Set(WEAPON_LIST.map((w) => w.category))];
+  const accent = def.visual?.accent || '#5cffd6';
   return `
     <p class="kicker">${esc(game.t('menu.armory'))}</p>
-    <h2>${esc(game.t(def.nameKey))}</h2>
-    <p class="lead">${esc(game.t(def.descKey))}</p>
+    <div class="wpn-hero" style="--op:${accent}">
+      <div class="wpn-art">${weaponGlyph(def, accent)}</div>
+      <div class="wpn-meta">
+        <h2>${esc(game.t(def.nameKey))}</h2>
+        <p class="lead" style="margin:4px 0 8px">${esc(game.t(def.descKey))}</p>
+        <p class="fine">${esc(game.t(def.projectile ? 'kit.projectile' : 'kit.hitscan'))} · ${esc(game.t('cat.' + def.category))}</p>
+      </div>
+    </div>
     <div class="grid3">
       ${stat(game.t('kit.dps'), Math.round(def.damage * (def.pellets || 1) * (def.fireRate || 1)))}
       ${stat(game.t('kit.ttk'), estimateTTK(def).toFixed(2) + 's')}
@@ -262,7 +434,6 @@ function weaponScreen(game) {
       ${stat(game.t('kit.range'), Math.round(def.range))}
       ${stat(game.t('kit.mobility'), def.mobility.toFixed(2))}
     </div>
-    <p class="fine" style="margin:8px 0">${esc(game.t(def.projectile ? 'kit.projectile' : 'kit.hitscan'))} · ${esc(game.t('cat.' + def.category))}</p>
     ${cats.map((cat) => `<div class="row" style="margin-top:6px">${WEAPON_LIST.filter((w) => w.category === cat).map((w) => `<button class="chip ${w.id === id ? 'on' : ''}" data-act="weapon" data-id="${w.id}">${esc(game.t(w.nameKey))}</button>`).join('')}</div>`).join('')}
   `;
 }

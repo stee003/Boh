@@ -220,6 +220,24 @@ export function setInput(match, id, input) {
   p.lastInputAt = match.time;
 }
 
+/**
+ * A human player who stops sending input (paused, tab hidden, connection hiccup)
+ * must stop moving: their last input frame decays to "no input" after `after`
+ * seconds of silence instead of being re-applied forever. Bots, dummies and
+ * decoys set their input directly every step, so they are skipped.
+ */
+export function decayStaleInputs(match, after = 0.3) {
+  for (const p of match.players) {
+    if (p.isBot || p.isDummy || p.isDecoy) continue;
+    if (p.lastInputAt != null && match.time - p.lastInputAt > after) {
+      // Zero the action/motion bits but KEEP the last sent view direction:
+      // the sim adopts input.yaw/pitch as the player's aim, so a plain empty
+      // input would snap the character back to facing north.
+      p.input = { ...emptyInput(), yaw: p.input.yaw, pitch: p.input.pitch };
+    }
+  }
+}
+
 export function setLoadout(match, id, loadout) {
   const p = match.players.find((x) => x.id === id);
   if (!p || !loadout) return;
@@ -596,6 +614,7 @@ export function hurtPlayer(match, victim, amount, attacker, info = {}) {
   victim.hp -= dmg;
   victim.regenDelayLeft = Math.max(0.4, (match.rules.regenDelay || 4) + (victim.mods?.regenDelay || 0));
   victim.flinch = Math.min(0.35, dmg / 90) * (victim.mods?.flinch ?? 1);
+  if (dmg > 0) victim.flashed = 0.09; // brief red armor flash so "I was hit" is readable
   if (attacker && attacker.id !== victim.id && !info.void) {
     attacker.damageDealt = (attacker.damageDealt || 0) + amount;
     attacker.hits = (attacker.hits || 0) + (info.splash ? 0 : 1);
@@ -988,6 +1007,7 @@ export function publicPlayer(p, full = false) {
     charge: full ? (p.charge || 0) : 0,
     spawnImmunity: p.spawnImmunity || 0,
     phasing: (p.phasingT || 0) > 0,
+    flashed: (p.flashed || 0) > 0,
     color: p.color || 0,
     objectiveScore: p.objectiveScore || 0,
   };
