@@ -356,6 +356,9 @@ export const STRINGS = {
   "hud.carry": { en: "Carrying core", it: "Nucleo in mano" },
   "hud.interact": { en: "Interact", it: "Interagisci" },
   "hud.wave": { en: "Tier", it: "Grado" },
+  "hud.headshot": { en: "HS", it: "TC" },
+  "hud.reserve": { en: "Reserve", it: "Riserva" },
+  "hud.you": { en: "You", it: "Tu" },
 
   "score.elim": { en: "Elimination +100", it: "Eliminazione +100" },
   "score.assist": { en: "Assist +50", it: "Assist +50" },

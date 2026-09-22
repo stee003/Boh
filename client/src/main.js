@@ -56,6 +56,7 @@ game.webglError = null;
 game.i18n = createI18n('en');
 game.t = (k, v) => game.i18n.t(k, v);
 game.settings = loadSettings();
+applyTeamCss();
 game.profile = loadProfile();
 game.i18n.set(game.settings.lang || 'en');
 input.setBindings(game.settings.bindings);
@@ -164,8 +165,12 @@ function tickLocal(dt) {
         simInput.pitch = me.pitch;
       }
     }
+    game.simAlpha = acc;
     if (match.tick % 6 === 0) pushReplay(match);
-  } else acc = 0;
+  } else {
+    acc = 0;
+    game.simAlpha = 0;
+  }
   present(match, player, dt);
   if (match.phase === 'ended' && !game.resultsShown) finishLocal(match);
 }
@@ -269,21 +274,33 @@ function presentSnap(snap, player, dt) {
   });
 }
 
+function displayPose(p, alpha) {
+  if (!p || !alpha || !p.alive || (p.vaultT || 0) > 0) return p;
+  return {
+    ...p,
+    x: p.x + (p.vx || 0) * alpha,
+    y: p.y + (p.vy || 0) * alpha,
+    z: p.z + (p.vz || 0) * alpha,
+  };
+}
+
 function paintWorld(match, player, dt, solids) {
+  const alpha = game.relayLive ? 0 : (game.simAlpha || 0);
   const ids = new Set();
   for (const p of match.players) {
     if (p.isDecoy && !p.alive) continue;
     ids.add(p.id);
     const hide = p.id === game.localId && game.freeCam;
-    view.updateActor(p, dt, { localId: game.localId, weaponId: p.weaponId || currentDef(p).id, hide, emote: game.emoteT > 0 && p.id === game.localId });
+    const shown = displayPose(p, alpha);
+    view.updateActor(shown, dt, { localId: game.localId, weaponId: p.weaponId || currentDef(p).id, hide, emote: game.emoteT > 0 && p.id === game.localId });
   }
   view.dropMissing(ids);
   view.syncBoxes(match.map);
   if (game.freeCam) view.frameFree(game.freePos, game.yaw, game.pitch);
   else if (!player.alive && game.spectateId) {
     const spec = match.players.find((p) => p.id === game.spectateId && p.alive) || player;
-    view.frameCamera(spec, solids, dt, camExtras(spec));
-  } else view.frameCamera(player, solids, dt, camExtras(player));
+    view.frameCamera(displayPose(spec, alpha), solids, dt, camExtras(spec));
+  } else view.frameCamera(displayPose(player, alpha), solids, dt, camExtras(player));
   view.tickFx(dt);
   view.syncWorld(worldExtras(match));
   view.minimap(document.getElementById('minimap'), match.map, match.players, player);
@@ -311,6 +328,7 @@ function camExtras(player) {
 
 function hudCommon(player, match, dt) {
   game.hitPulse = Math.max(0, game.hitPulse - dt);
+  game.floaters = (game.floaters || []).map((f) => ({ ...f, age: f.age + dt, y: f.y + dt * 0.85, life: f.life - dt })).filter((f) => f.life > 0);
   game.emoteT = Math.max(0, (game.emoteT || 0) - dt);
   game.damageDirs = (game.damageDirs || []).map((d) => ({ ...d, life: d.life - dt })).filter((d) => d.life > 0);
   updatePrompt(player, match);
@@ -452,9 +470,14 @@ function handleOne(ev, player, match) {
     view.tracer(from, to, ev.team === 'b' ? '#ff8a6a' : '#d8fff4');
   } else if (ev.type === 'impact' && ev.point) {
     view.impact([ev.point.x, ev.point.y, ev.point.z], [0, 1, 0], '#ffb03a');
-  } else if (ev.type === 'hit' && ev.attackerId === game.localId) {
-    game.hitPulse = 0.12;
+  } else if (ev.type === 'hit' && ev.attackerId === game.localId && !ev.friendly) {
+    game.hitPulse = 0.28;
+    game.hitHead = ev.zone === 'head';
+    game.hitSeq = (game.hitSeq || 0) + 1;
     audio.play(ev.zone === 'head' ? 'head' : 'hit');
+    if (ev.point && !game.settings.reduceFx) {
+      view.impact([ev.point.x, ev.point.y, ev.point.z], [0, 1, 0], ev.zone === 'head' ? '#ffb03a' : '#ffffff');
+    }
     if (game.settings.damageNumbers !== false && ev.amount) floatDamage(ev);
   } else if (ev.type === 'hit' && ev.victimId === game.localId && ev.point && player) {
     const ang = Math.atan2(ev.point.x - player.x, ev.point.z - player.z) - player.yaw;
@@ -462,10 +485,18 @@ function handleOne(ev, player, match) {
     if (game.settings.screenShake !== false) view.state.shake += game.settings.reduceMotion ? 0.02 : 0.08;
     audio.play('hit', { gain: 0.04 });
   } else if (ev.type === 'kill') {
-    const killer = nameOf(ev.killerId, match) || '';
-    const victim = nameOf(ev.victimId, match) || '';
+    const killerP = playerOf(ev.killerId, match);
+    const victimP = playerOf(ev.victimId, match);
     const w = WEAPON_LIST.find((x) => x.id === ev.weaponId);
-    game.feed.push(`${killer} → ${victim}${w ? ' · ' + game.t(w.nameKey) : ''}`);
+    game.feed.push({
+      killer: killerP?.name || '',
+      victim: victimP?.name || '',
+      killerTeam: killerP?.team || '',
+      victimTeam: victimP?.team || '',
+      weapon: w ? game.t(w.nameKey) : '',
+      headshot: ev.zone === 'head',
+      you: ev.killerId === game.localId || ev.victimId === game.localId,
+    });
     if (game.feed.length > 6) game.feed.shift();
     if (ev.killerId === game.localId && ev.point) {
       const fx = game.profile.equipped?.killEffect || 'shard';
@@ -474,7 +505,7 @@ function handleOne(ev, player, match) {
     }
     if (ev.victimId === game.localId) {
       game.spectateId = ev.killerId;
-      setBanner(game.t('hud.killed_by') + ' ' + killer, 1200);
+      setBanner(game.t('hud.killed_by') + ' ' + (killerP?.name || ''), 1200);
     }
   } else if (ev.type === 'announce') {
     setBanner(game.t(ev.key), 1400);
@@ -483,7 +514,8 @@ function handleOne(ev, player, match) {
     audio.play('explode');
     view.ring(ev.point.x, ev.point.y, ev.point.z, '#ff5a3c', 0.4);
     view.state.shake += 0.12;
-  } else if (ev.type === 'dry' && ev.playerId === game.localId) audio.play('empty');
+  } else if (ev.type === 'reload_start' && ev.playerId === game.localId) audio.play('reload');
+  else if (ev.type === 'dry' && ev.playerId === game.localId) audio.play('empty');
   else if (ev.type === 'melee' && ev.playerId === game.localId) audio.play('melee');
   else if (ev.type === 'ability' || ev.type === 'ultimate') {
     if (ev.playerId === game.localId) audio.play('ability');
@@ -495,11 +527,30 @@ function handleOne(ev, player, match) {
 
 function floatDamage(ev) {
   if (!ev.point || game.settings.reduceFx) return;
-  /* numbers stay in the hit marker pulse; a DOM floater would clutter the lattice */
+  game.floaters = game.floaters || [];
+  game.floaters.push({
+    x: ev.point.x, y: ev.point.y + 0.2, z: ev.point.z,
+    amount: ev.amount,
+    head: ev.zone === 'head',
+    life: 0.72,
+    age: 0,
+  });
+  if (game.floaters.length > 12) game.floaters.shift();
+}
+
+function playerOf(id, match) {
+  return (match?.players || game.snap?.players || []).find((p) => p.id === id) || null;
 }
 
 function nameOf(id, match) {
-  return (match?.players || game.snap?.players || []).find((p) => p.id === id)?.name || '';
+  return playerOf(id, match)?.name || '';
+}
+
+function applyTeamCss() {
+  const pal = teamPalette(game.settings?.colorblind);
+  const root = document.documentElement;
+  if (pal?.a) root.style.setProperty('--a', pal.a);
+  if (pal?.b) root.style.setProperty('--b', pal.b);
 }
 
 function footsteps(player, dt) {
@@ -727,6 +778,7 @@ function enterMatch(match, relay) {
   view.state.actors.clear();
   view.buildMap(match.map);
   view.state.palette = teamPalette(game.settings.colorblind);
+  applyTeamCss();
   const me = match.players.find((p) => p.id === game.localId) || match.players[0];
   game.localId = me?.id || 'you';
   game.yaw = me?.yaw || 0;
@@ -1019,6 +1071,7 @@ game.readSettingsFromDom = () => {
     view.setQuality(game.settings.quality);
     view.state.palette = teamPalette(game.settings.colorblind);
     view.state.reduceFx = game.settings.reduceFx;
+    applyTeamCss();
   }
   saveSettings();
   document.documentElement.style.setProperty('--hud', String(game.settings.hudScale || 1));
@@ -1484,7 +1537,7 @@ function shortest(a, b) {
 
 function fallbackPalette(mode = 'off') {
   const sets = {
-    off: { a: '#2ec8ff', b: '#ff5a3c', self: '#5cffd6', enemy: '#ff5a3c' },
+    off: { a: '#2ec8ff', b: '#ff5a3c', self: '#5cffd6', enemy: '#ffb03a' },
     deutan: { a: '#3d8bff', b: '#ffb000', self: '#7af0ff', enemy: '#ffb000' },
     protan: { a: '#4aa3ff', b: '#ffe14a', self: '#9ad7ff', enemy: '#ffe14a' },
     tritan: { a: '#ff5a7a', b: '#3dffe8', self: '#ff8ad4', enemy: '#3dffe8' },

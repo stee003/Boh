@@ -1,6 +1,6 @@
 import { MOVE } from '../constants.js';
 import {
-  approach, clamp, distXZ, forwardXZ, len3, lookDir, norm3, rightXZ, sub3,
+  clamp, distXZ, forwardXZ, len3, lookDir, norm3, rightXZ, sub3,
 } from '../math.js';
 
 export function emptyInput() {
@@ -361,12 +361,22 @@ export function simulateMovement(player, input, solids, dt, rules) {
     if (crouchHeld && player.onGround) target = MOVE.crouch * mobility;
     if (wantAim) target *= MOVE.aimMul;
     if (player.carrying) target *= 0.88;
-    const accel = (player.onGround ? MOVE.groundAccel : MOVE.airAccel) * (player.onGround ? 1 : 1);
-    player.vx = approach(player.vx, wx * target, accel * dt);
-    player.vz = approach(player.vz, wz * target, accel * dt);
-    if (Math.hypot(nxn, nyn) < 0.08 && player.onGround) {
-      player.vx = approach(player.vx, 0, MOVE.groundDecel * dt);
-      player.vz = approach(player.vz, 0, MOVE.groundDecel * dt);
+    const wishMag = Math.hypot(wx, wz);
+    if (wishMag < 0.08) {
+      // Isotropic stop. Per-axis approach bled speed whenever the wish direction turned.
+      applyDrag(player, player.onGround ? (MOVE.groundFriction || 12) : (MOVE.airDrag || 1.15), dt);
+    } else {
+      const scale = Math.min(1, wishMag);
+      steerVelocity(player, wx / wishMag, wz / wishMag, target * scale, player.onGround ? MOVE.groundAccel : MOVE.airAccel, dt);
+      if (player.onGround) {
+        const spdNow = Math.hypot(player.vx, player.vz);
+        if (spdNow > target * 1.02) {
+          const bleed = Math.min(spdNow - target, (MOVE.groundFriction || 12) * 0.45 * dt);
+          const ns = Math.max(target, spdNow - bleed);
+          player.vx *= ns / spdNow;
+          player.vz *= ns / spdNow;
+        }
+      } else applyDrag(player, (MOVE.airDrag || 1.15) * 0.35, dt);
     }
   }
 
@@ -483,12 +493,83 @@ export function aimRay(player, solids, ads = 0) {
   return { origin, dir, aim, cam, dist };
 }
 
+/** Accelerate along the wish direction and bleed only the sideways slip, so a turn keeps speed. */
+function steerVelocity(player, ix, iz, wishSpeed, accel, dt) {
+  const along = player.vx * ix + player.vz * iz;
+  const px = player.vx - ix * along;
+  const pz = player.vz - iz * along;
+  const bleed = Math.min(1, dt * (MOVE.turnBleed || 16));
+  player.vx = ix * along + px * (1 - bleed);
+  player.vz = iz * along + pz * (1 - bleed);
+  const add = wishSpeed - along;
+  if (add > 0) {
+    const push = Math.min(add, accel * dt);
+    player.vx += ix * push;
+    player.vz += iz * push;
+  }
+}
+
+function applyDrag(player, rate, dt) {
+  const spd = Math.hypot(player.vx, player.vz);
+  if (spd < 0.04) { player.vx = 0; player.vz = 0; return; }
+  const keep = Math.max(0, 1 - rate * dt);
+  player.vx *= keep;
+  player.vz *= keep;
+  if (Math.hypot(player.vx, player.vz) < 0.04) { player.vx = 0; player.vz = 0; }
+}
+
+/** True only when the capsule actually overlaps a solid — a wall brush is not an embed. */
+export function isEmbedded(x, y, z, solids, height = MOVE.height) {
+  return !!penetrates(x, y + 0.02, z, MOVE.radius, height, solids || []);
+}
+
+function candidateFeet(x, y, z, solids) {
+  const support = findSupport(x, z, MOVE.radius * 0.66, y + 1.4, 2.4, solids);
+  const feet = [];
+  if (support && Math.abs(support.y - y) <= 1.8) feet.push(support.y);
+  feet.push(y);
+  return feet;
+}
+
+/** Spiral a short distance for a feet position the capsule can stand in. Returns null if none. */
+export function findClearSpot(x, y, z, solids, height = MOVE.height) {
+  if (!isEmbedded(x, y, z, solids, height)) return { x, y, z };
+  for (let ring = 1; ring <= 8; ring++) {
+    const rad = ring * 0.42;
+    const samples = 8 + ring * 2;
+    for (let i = 0; i < samples; i++) {
+      const a = (i / samples) * Math.PI * 2 + ring * 0.37;
+      const sx = x + Math.cos(a) * rad;
+      const sz = z + Math.sin(a) * rad;
+      for (const feet of candidateFeet(sx, y, sz, solids)) {
+        if (!isEmbedded(sx, feet, sz, solids, height)) return { x: sx, y: feet, z: sz };
+      }
+    }
+  }
+  return null;
+}
+
+/** Pop a body out only when it is actually inside geometry. Skips vaults and phase. */
+export function resolveEmbed(body, solids, height = MOVE.height) {
+  if (!body || (body.vaultT || 0) > 0 || (body.phasingT || 0) > 0) return false;
+  if (!isEmbedded(body.x, body.y, body.z, solids, height)) return false;
+  const spot = findClearSpot(body.x, body.y, body.z, solids, height);
+  if (!spot) return false;
+  if (Math.hypot(spot.x - body.x, spot.z - body.z) < 0.02 && Math.abs(spot.y - body.y) < 0.02) return false;
+  body.x = spot.x;
+  body.y = spot.y;
+  body.z = spot.z;
+  body.vx = 0;
+  body.vz = 0;
+  return true;
+}
+
 export function hitboxesOf(p) {
   const h = bodyHeight(p);
   const headY = p.y + h - 0.01;
   return [
-    { zone: 'head', type: 'sphere', c: { x: p.x, y: headY, z: p.z }, r: p.crouch || p.sliding ? 0.15 : 0.17 },
-    { zone: 'body', type: 'aabb', min: { x: p.x - 0.23, y: p.y + h * 0.4, z: p.z - 0.15 }, max: { x: p.x + 0.23, y: p.y + h - 0.14, z: p.z + 0.15 } },
+    { zone: 'head', type: 'sphere', c: { x: p.x, y: headY, z: p.z }, r: p.crouch || p.sliding ? 0.16 : 0.19 },
+    { zone: 'body', type: 'aabb', min: { x: p.x - 0.26, y: p.y + h * 0.32, z: p.z - 0.18 }, max: { x: p.x + 0.26, y: p.y + h - 0.08, z: p.z + 0.18 } },
     { zone: 'limb', type: 'aabb', min: { x: p.x - 0.4, y: p.y + h * 0.46, z: p.z - 0.12 }, max: { x: p.x - 0.2, y: p.y + h * 0.8, z: p.z + 0.12 } },
     { zone: 'limb', type: 'aabb', min: { x: p.x + 0.2, y: p.y + h * 0.46, z: p.z - 0.12 }, max: { x: p.x + 0.4, y: p.y + h * 0.8, z: p.z + 0.12 } },
     { zone: 'limb', type: 'aabb', min: { x: p.x - 0.18, y: p.y + 0.02, z: p.z - 0.13 }, max: { x: p.x - 0.02, y: p.y + h * 0.46, z: p.z + 0.13 } },

@@ -43,7 +43,7 @@ function mapAllowed(id) {
 function slim(p) {
   const row = publicPlayer(p, true);
   row.weaponSlot = p.weaponSlot || 0;
-  row.weapons = (p.weapons || []).map((w) => ({ defId: w.defId, mag: w.mag }));
+  row.weapons = (p.weapons || []).map((w) => ({ defId: w.defId, mag: w.mag, reserve: w.reserve }));
   row.mag = p.weapons?.[p.weaponSlot || 0]?.mag ?? 0;
   return row;
 }

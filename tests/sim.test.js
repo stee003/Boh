@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMatch, stepMatch, summarize } from '../shared/sim/match.js';
+import { penetrates } from '../shared/sim/physics.js';
 import { computeHitDamage } from '../shared/sim/combat.js';
 import { WEAPON_LIST, WEAPON_CATEGORIES, resolveWeapon, estimateTTK } from '../shared/weapons.js';
 import { CHARACTERS } from '../shared/characters.js';
@@ -30,6 +31,24 @@ test('maps have safe spawns and objectives', () => {
   for (const map of MAPS) {
     const errors = validateMap(map);
     assert.deepEqual(errors, [], map.id);
+  }
+});
+
+test('players do not spawn inside solid geometry', () => {
+  for (const map of MAPS) {
+    for (const modeId of ['team_fracture', 'free_fracture']) {
+      const match = createMatch({
+        modeId,
+        mapId: map.id,
+        seed: 1,
+        rules: { timeLimit: 30, fillBots: false },
+        players: [{ id: 'a', name: 'A', team: 'a' }, { id: 'b', name: 'B', team: 'b' }],
+      });
+      for (const p of match.players) {
+        const hit = penetrates(p.x, p.y, p.z, 0.34, 1.72, match._solidCache);
+        assert.equal(hit, null, `${map.id} ${modeId} ${p.id} inside ${hit?.id}`);
+      }
+    }
   }
 });
 
