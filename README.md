@@ -38,3 +38,29 @@ Accounts and match results for relay circuits live in `server/data`. The browser
 ## License
 
 Original work. All rights reserved. Do not copy another game's maps, characters, weapons, UI, audio, or code into this project.
+
+## Controls & settings
+
+The game keeps its third-person shoulder view, with standard FPS-style mouse input:
+
+- Deploy captures the cursor. Move the mouse freely to look; **no button needs to be held**.
+- **Left click** fires (or swings an equipped melee weapon); **right click** aims; **R** reloads.
+- **WASD** moves, **Shift** sprints, **Space** jumps, **Ctrl** crouches/slides, **1–3** or the wheel changes weapons.
+- **Esc** releases the mouse and opens the pause menu. Click **Resume** to recapture it. Losing focus also pauses local play and clears held inputs. Online matches continue while paused, but your controls are neutralized.
+- If the browser blocks cursor capture after loading/matchmaking, click **Resume**. Embedded hosts must permit pointer lock; otherwise open the preview directly in a tab.
+
+**Settings** is available in the lobby header and pause menu. Controls, Gameplay, Video, Audio, and Key bindings are separate tabs. Sensitivity, ADS multiplier, invert Y, controller tuning, aim/crouch behavior, auto sprint, FOV, effects, volume, and bindings save automatically in this browser and take effect immediately. In-match settings return to the same match via **Resume**.
+
+Characters use articulated, blended procedural animation for movement, crouch, slide, jump/landing, dodge, vault, reload, melee and death. Every shot event drives its own muzzle flash/recoil, including automatic fire. Reduced motion disables decorative UI/lobby motion and camera shake/kick; essential character action cues remain visible.
+
+## Regression checks
+
+```bash
+npm test
+npm run build
+# With the relay and Vite running in other terminals:
+npx playwright install --with-deps chromium
+npm run test:browser
+```
+
+The browser smoke test checks local and dedicated-relay firing, free mouse look, HUD click-through, slider continuity/persistence, in-match settings, pause/resume, focus cleanup, narrow layout and runtime errors. `GAME_URL` overrides the Vite URL; `CHROME_PATH` optionally supplies an existing Chromium executable. Unit tests also cover finite weapon audio, sprint-to-fire, empty reloads, short input pulses and animation transitions.

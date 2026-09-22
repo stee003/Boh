@@ -16,8 +16,10 @@ const GAMEPAD = {
 export class Input {
   constructor() {
     this.keys = new Set();
-    this.mouse = { dx: 0, dy: 0, l: false, r: false, wheel: 0, downL: false, downR: false };
+    this.mouse = { dx: 0, dy: 0, l: false, r: false, m: false, wheel: 0, downL: false, downR: false };
     this.locked = false;
+    this.presses = new Set();
+    this.capture = false;
     this.bindings = {};
     this.rebind = null;
     this.pad = { active: false, moveX: 0, moveY: 0, lookX: 0, lookY: 0, buttons: {} };
@@ -27,20 +29,23 @@ export class Input {
     window.addEventListener('mousedown', (e) => this.onMouseButton(e, true));
     window.addEventListener('mouseup', (e) => this.onMouseButton(e, false));
     window.addEventListener('mousemove', (e) => {
-      if (this.locked || e.buttons) {
+      if (this.capture && (this.locked || (this.dragLook && e.buttons))) {
         this.mouse.dx += e.movementX || 0;
         this.mouse.dy += e.movementY || 0;
       }
     });
     window.addEventListener('wheel', (e) => {
-      this.mouse.wheel += Math.sign(e.deltaY);
+      if (this.capture) this.mouse.wheel += Math.sign(e.deltaY);
     }, { passive: true });
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => { this.reset(); this.onFocusLost?.(); });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') this.keys.clear();
+      if (document.visibilityState === 'hidden') { this.reset(); this.onFocusLost?.(); }
     });
+    document.addEventListener('pointerlockerror', () => this.onLockError?.());
     document.addEventListener('pointerlockchange', () => {
-      this.locked = document.pointerLockElement != null;
+      this.locked = !!document.pointerLockElement && document.pointerLockElement === this.lockElement;
+      if (!this.locked) this.reset();
+      this.onLockChange?.(this.locked);
     });
   }
 
@@ -58,6 +63,8 @@ export class Input {
       done(code);
       return;
     }
+    if (!this.capture && down) return;
+    if (down && !this.keys.has(e.code)) this.presses.add(e.code);
     if (down) this.keys.add(e.code);
     else this.keys.delete(e.code);
     // While playing, game keys must not scroll the page, move focus, or trigger browser shortcuts.
@@ -72,13 +79,16 @@ export class Input {
       e.preventDefault();
       return;
     }
-    if (!this.locked && e.target instanceof Element && e.target.closest('#ui')) {
+    if (!this.capture || (!this.locked && e.target instanceof Element && e.target.closest('#ui'))) {
       if (!down) {
         if (e.button === 0) this.mouse.l = false;
         if (e.button === 2) this.mouse.r = false;
+        if (e.button === 1) this.mouse.m = false;
       }
       return;
     }
+    if (down) this.presses.add(`Mouse${e.button}`);
+    if (e.button === 1) this.mouse.m = down;
     if (e.button === 0) this.mouse.l = down;
     if (e.button === 2) this.mouse.r = down;
     if (down && e.button === 0) this.mouse.downL = true;
@@ -90,8 +100,19 @@ export class Input {
     if (!code) return false;
     if (code === 'Mouse0') return this.mouse.l;
     if (code === 'Mouse2') return this.mouse.r;
-    if (code === 'Mouse1') return false;
+    if (code === 'Mouse1') return this.mouse.m;
     return this.keys.has(code);
+  }
+
+  pressed(action) {
+    return this.presses.has(this.bindings[action]);
+  }
+
+  reset() {
+    this.keys.clear();
+    this.presses.clear();
+    Object.assign(this.mouse, { dx: 0, dy: 0, wheel: 0, l: false, r: false, m: false, downL: false, downR: false });
+    this.prevPad = { ...this.pad.buttons };
   }
 
   consumeLook() {
@@ -150,13 +171,23 @@ export class Input {
   }
 
   endFrame() {
+    this.presses.clear();
     this.mouse.downL = false;
     this.mouse.downR = false;
     this.prevPad = { ...(this.pad.buttons || {}) };
   }
 
-  requestLock(el) {
-    el?.requestPointerLock?.();
+  async requestLock(el) {
+    this.lockElement = el;
+    if (document.pointerLockElement === el) return true;
+    try {
+      if (!el?.requestPointerLock) throw new Error('Pointer lock unavailable');
+      await el.requestPointerLock();
+      return true;
+    } catch {
+      this.onLockError?.();
+      return false;
+    }
   }
 
   exitLock() {

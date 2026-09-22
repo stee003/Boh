@@ -5,3 +5,4 @@ server/data/*.json
 *.log
 .vite/
 coverage/
+.cache/

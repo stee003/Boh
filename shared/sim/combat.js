@@ -266,8 +266,6 @@ function fireOne(match, player, def, charge = 1) {
 
 export function stepWeapons(match, player, dt) {
   const input = player.input || {};
-  const def = currentDef(player);
-  const state = currentState(player);
   player.fireCd = Math.max(0, (player.fireCd || 0) - dt);
   player.meleeCd = Math.max(0, (player.meleeCd || 0) - dt);
   player.sprintToFire = Math.max(0, (player.sprintToFire || 0) - dt);
@@ -281,13 +279,16 @@ export function stepWeapons(match, player, dt) {
     player.sprintToFire = 0.08;
   }
 
+  const def = currentDef(player);
+  const state = currentState(player);
+
   if (input.reload && state && !def.melee && !player.reloading && state.mag < def.mag && state.reserve > 0) {
     player.reloading = true;
     player.reloadT = (state.mag <= 0 ? def.reloadEmpty : def.reload) * (player.reloadMul || 1);
     player.burstQueue = 0;
   }
   if (player.reloading) {
-    if (firingHeld) {
+    if (firingHeld && state.mag > 0) {
       player.reloading = false;
       player.reloadT = 0;
     } else {
@@ -310,14 +311,16 @@ export function stepWeapons(match, player, dt) {
     }
   }
 
-  if (player.sprinting && firingHeld) player.sprintToFire = Math.max(player.sprintToFire, def.sprintToFire || 0.1);
+  if (player.wasSprinting && firingHeld) player.sprintToFire = Math.max(player.sprintToFire, def.sprintToFire || 0.1);
+  player.wasSprinting = !!player.sprinting;
 
   recoverRecoil(player, def, dt, firingHeld && player.fireCd > 0);
 
-  if (input.melee && !player.prevMelee && player.meleeCd <= 0 && player.phasingT <= 0) {
+  const meleeHeld = !!input.melee || (def.melee && firingHeld);
+  if (meleeHeld && !player.prevMelee && player.meleeCd <= 0 && player.phasingT <= 0) {
     doMelee(match, player);
   }
-  player.prevMelee = !!input.melee;
+  player.prevMelee = meleeHeld;
 
   if (player.reloading || player.sprintToFire > 0 || player.vaultT > 0 || player.phasingT > 0) {
     player.firing = false;

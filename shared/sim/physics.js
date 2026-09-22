@@ -342,7 +342,7 @@ export function simulateMovement(player, input, solids, dt, rules) {
 
   const wantAim = !!input.aim && !player.dodging;
   player.aiming = wantAim;
-  const wantSprint = !!input.sprint && nyn > 0.4 && !wantAim && !crouchHeld && player.onGround && !player.sliding && !player.reloading;
+  const wantSprint = !!input.sprint && !input.fire && nyn > 0.4 && !wantAim && !crouchHeld && player.onGround && !player.sliding && !player.reloading;
 
   if (player.sliding) {
     player.slideT -= dt;

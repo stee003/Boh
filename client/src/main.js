@@ -1,3 +1,4 @@
+import { bufferInput } from './input-buffer.js';
 import { AudioBus } from './audio.js';
 import { Input, defaultBindings } from './input.js';
 import { Relay } from './net.js';
@@ -84,12 +85,25 @@ canvas.addEventListener('pointerdown', () => {
   if (game.inMatch && !game.paused && !game.editor) input.requestLock(canvas);
 });
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && game.inMatch && !game.editor) {
+  if ((e.code === 'Escape' || e.code === game.settings.bindings.pause) && !e.repeat && !game.rebindAction && game.inMatch && !game.editor && !game.resultsShown) {
     e.preventDefault();
-    if (game.paused) game.resume();
-    else pause();
+    if (!game.paused) pause();
+    else if (e.code !== 'Escape') game.resume();
   }
 });
+
+input.onLockChange = (locked) => {
+  if (!locked && game.inMatch && !game.paused && !game.editor && !game.resultsShown) pause();
+};
+input.onFocusLost = () => {
+  if (game.inMatch && !game.paused && !game.editor && !game.resultsShown) pause();
+};
+input.onLockError = () => {
+  if (game.inMatch && !game.editor && !game.resultsShown) {
+    pause();
+    toast(game.t('controls.lock_error'));
+  }
+};
 
 let acc = 0;
 let last = performance.now();
@@ -102,7 +116,11 @@ function loop(now) {
   frames++;
   fpsT += dt;
   if (fpsT >= 0.5) { game.fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
+  input.dragLook = !!game.editor;
   input.pollPad(game.settings);
+  if (game.inMatch && !game.editor && !game.resultsShown && (input.padEdge('pause') || input.pressed('pause'))) {
+    if (game.paused) game.resume(input.padEdge('pause')); else pause();
+  }
   if (game.editor) tickEditor(dt);
   else if (game.replayMode) tickReplay(dt);
   else if (game.inMatch && game.relayLive) tickRelay(dt);
@@ -114,7 +132,7 @@ function loop(now) {
 
 function tickMenu(dt) {
   if (!view?.tickMenu) return;
-  view.tickMenu(dt);
+  view.tickMenu(game.settings.reduceMotion ? 0 : dt);
   const id = game.activeCharacter();
   if (view.state.showcase?.charId !== id) view.setShowcase(id, getCharacter(id).visual?.accent);
 }
@@ -126,11 +144,13 @@ function tickLocal(dt) {
   if (acc > DT * 4) acc = DT * 4; // drop backlog after a stall instead of burst-stepping (teleporting)
   const player = match.players.find((p) => p.id === game.localId);
   if (!player) return;
-  if (!game.paused) {
-    const simInput = gatherInput(player);
-    player.input = simInput;
+  if (!game.paused && !game.resultsShown) {
+    const simInput = gatherInput(player, dt);
+    game.pendingInput = bufferInput(game.pendingInput, simInput);
     let steps = 0;
     while (acc >= DT && steps < 4) {
+      player.input = game.pendingInput || simInput;
+      game.pendingInput = null;
       stepMatch(match, DT);
       acc -= DT;
       steps++;
@@ -140,6 +160,8 @@ function tickLocal(dt) {
         game.pitch = me.pitch;
         me.input.yaw = me.yaw;
         me.input.pitch = me.pitch;
+        simInput.yaw = me.yaw;
+        simInput.pitch = me.pitch;
       }
     }
     if (match.tick % 6 === 0) pushReplay(match);
@@ -202,18 +224,20 @@ function tickRelay(dt) {
   if (!raw) return;
   if (!game.paused && !game.replayMode && !game.freeCam) smoothLocalPlayer(raw, snap, dt);
   const look = { ...raw, yaw: game.yaw, pitch: game.pitch };
-  if (!game.paused) {
-    const simInput = gatherInput(look);
+  if (!game.paused && !game.resultsShown) {
+    const simInput = gatherInput(look, dt);
     const kick = shortest(game.yaw, raw.yaw ?? game.yaw);
     if (Math.abs(kick) < 0.4) game.yaw += kick * 0.35;
     look.yaw = game.yaw;
     look.pitch = game.pitch;
     simInput.yaw = game.yaw;
     simInput.pitch = game.pitch;
+    game.pendingInput = bufferInput(game.pendingInput, simInput);
     const nowMs = performance.now();
     if (nowMs >= (game._nextInput || 0)) {
       game._nextInput = nowMs + 32;
-      game.net.send({ type: 'input', t: Date.now(), input: simInput, ping: game.net.ping || 0 });
+      game.net.send({ type: 'input', t: Date.now(), input: game.pendingInput, ping: game.net.ping || 0 });
+      game.pendingInput = null;
     }
   }
   presentSnap(snap, look, dt);
@@ -222,7 +246,7 @@ function tickRelay(dt) {
 function present(match, player, dt) {
   player.weaponId = currentDef(player).id;
   const solids = match._solidCache || match.map.boxes;
-  paintWorld(match, player, dt, solids);
+  paintWorld(match, player, game.paused ? 0 : dt, solids);
   handleEvents(match, player, consumeEvents(match));
   hudCommon(player, match, dt);
 }
@@ -233,6 +257,7 @@ function presentSnap(snap, player, dt) {
   if (game.freeCam) view.frameFree(game.freePos, game.yaw, game.pitch);
   else view.frameCamera(player, fake._solidCache, dt, camExtras(player));
   for (const ev of snap.events || []) handleOne(ev, player, null);
+  snap.events = []; // A 20 Hz snapshot must not replay its effects every render frame.
   hudCommon(player, snap, dt);
   view.tickFx(dt);
   view.syncWorld({
@@ -301,10 +326,9 @@ function hudCommon(player, match, dt) {
   footsteps(player, dt);
 }
 
-function gatherInput(player) {
+function gatherInput(player, dt = DT) {
   const s = game.settings;
   const pad = input.pad;
-  const prev = game._prevKeys || {};
   let mx = 0;
   let my = 0;
   if (input.held('forward')) my = 1;
@@ -323,16 +347,16 @@ function gatherInput(player) {
   const sens = (s.sens || 1.1) * 0.0022 * ads;
   const invert = s.invertY ? -1 : 1;
   game.yaw += look.x * sens;
-  game.pitch += look.y * sens * invert;
+  game.pitch -= look.y * sens * invert;
   // Keyboard look is capped to a sane rate (a held arrow should turn, not spin).
-  const keyLook = 2.4 * (1 / 60);
+  const keyLook = 2.4 * dt;
   if (input.held('lookLeft')) game.yaw -= keyLook;
   if (input.held('lookRight')) game.yaw += keyLook;
   if (input.held('lookUp')) game.pitch += keyLook * 0.82 * invert;
   if (input.held('lookDown')) game.pitch -= keyLook * 0.82 * invert;
   if (pad.active) {
-    game.yaw += pad.lookX;
-    game.pitch += pad.lookY * invert;
+    game.yaw += pad.lookX * dt * 60;
+    game.pitch -= pad.lookY * invert * dt * 60;
     if (s.aimAssist !== false) aimAssist(player);
   }
   game.pitch = Math.max(-1.2, Math.min(1.15, game.pitch));
@@ -351,15 +375,13 @@ function gatherInput(player) {
   if (s.toggleCrouch && (edge('crouch') || input.padEdge('crouch'))) game.crouchOn = !game.crouchOn;
   if (s.toggleCrouch) crouch = game.crouchOn;
   let aim = input.held('aim') || input.padDown('aim');
-  if (!s.holdAim && (input.mouse.downR || input.padEdge('aim'))) game.aimOn = !game.aimOn;
+  if (!s.holdAim && (edge('aim') || input.padEdge('aim'))) game.aimOn = !game.aimOn;
   if (!s.holdAim) aim = !!game.aimOn;
   const slot = edgeSlot();
   game._wheel = 0;
   if (slot >= 0) game.slot = slot;
   const chat = edge('chat');
   if (chat) game.chatOpen = !game.chatOpen;
-  game._prevKeys = {};
-  input.keys.forEach((k) => { game._prevKeys[k] = true; });
   return {
     ...emptyInput(),
     moveX: clamp(mx, -1, 1),
@@ -369,7 +391,7 @@ function gatherInput(player) {
     jump: input.held('jump') || input.padDown('jump'),
     crouch,
     sprint: input.held('sprint') || input.padDown('sprint') || !!s.autoSprint,
-    fire: input.held('fire') || input.padDown('fire'),
+    fire: input.held('fire') || input.pressed('fire') || input.padDown('fire'),
     aim,
     reload: edge('reload') || input.padEdge('reload'),
     melee: edge('melee') || input.padEdge('melee'),
@@ -383,11 +405,7 @@ function gatherInput(player) {
   };
 }
 
-function edge(action) {
-  const code = game.settings.bindings[action];
-  if (!code || code.startsWith('Mouse')) return false;
-  return input.keys.has(code) && !game._prevKeys?.[code];
-}
+function edge(action) { return input.pressed(action); }
 function edgeSlot() {
   if (pressed('slot1')) return 0;
   if (pressed('slot2')) return 1;
@@ -399,10 +417,7 @@ function edgeSlot() {
   if (w < 0) return (cur + 2) % 3;
   return -1;
 }
-function pressed(action) {
-  const code = game.settings.bindings[action];
-  return code && input.keys.has(code) && !game._prevKeys?.[code];
-}
+function pressed(action) { return input.pressed(action); }
 
 function aimAssist(player) {
   const list = (game.match?.players || game.snap?.players || []).filter((p) => p.alive && p.id !== player.id && p.team !== player.team);
@@ -429,7 +444,8 @@ function handleOne(ev, player, match) {
   if (ev.type === 'shot') {
     const self = ev.playerId === game.localId;
     audio.weapon(ev.sound || 'ar', !self);
-    if (self) view.state.fovKick += 1.5;
+    view.shot(ev.playerId);
+    if (self && !game.settings.reduceMotion && game.settings.screenShake) view.state.fovKick += 1.5;
   } else if (ev.type === 'tracer' && ev.origin && ev.point) {
     const from = [ev.origin.x, ev.origin.y, ev.origin.z];
     const to = [ev.point.x, ev.point.y, ev.point.z];
@@ -548,6 +564,9 @@ function markers(match) {
 
 function finishLocal(match) {
   game.resultsShown = true;
+  input.capture = false;
+  input.reset();
+  input.exitLock();
   const summary = summarize(match);
   const row = summary.players.find((p) => p.id === game.localId);
   if (!row || game.rewarded) {
@@ -715,22 +734,36 @@ function enterMatch(match, relay) {
   game.freePos = { x: me?.x || 0, y: (me?.y || 0) + 3, z: me?.z || 0 };
   showHUD(true);
   renderHUD(game);
+  input.reset();
+  game.pendingInput = null;
   input.capture = true;
+  game.paused = false;
   document.getElementById('overlays').innerHTML = '';
   setBanner(match.phase === 'countdown' ? '3' : game.t('announce.go'), 900);
+  input.requestLock(canvas);
 }
 
 function pause() {
   game.paused = true;
+  input.capture = false;
+  input.reset();
+  game.pendingInput = null;
+  game.aimOn = false;
+  if (game.relayLive) game.net.send({ type: 'input', input: { ...emptyInput(), yaw: game.yaw, pitch: game.pitch } });
   input.exitLock();
   showPause(game, true);
 }
-game.resume = () => {
+game.resume = (controller = false) => {
+  input.reset();
+  input.rebind = null;
+  game.rebindAction = null;
+  game.pendingInput = null;
+  input.capture = true;
   game.paused = false;
   showPause(game, false);
   if (game.inMatch) {
-    document.getElementById('shell')?.classList.add('hidden');
-    input.requestLock(canvas);
+    showHUD(true);
+    if (!controller) input.requestLock(canvas);
   }
 };
 game.leaveMatch = () => {
@@ -751,7 +784,10 @@ game.leaveMatch = () => {
   game._localSmooth = null;
   input.capture = false;
   input.exitLock();
-  input.keys.clear();
+  input.reset();
+  input.rebind = null;
+  game.rebindAction = null;
+  game.pendingInput = null;
   showHUD(false);
   document.getElementById('overlays').innerHTML = '';
   bootMenu();
@@ -790,9 +826,14 @@ function bootMenu() {
 
 game.go = (id) => {
   if (id === 'exit') return game.exit();
+  if (game.inMatch && id !== 'settings') return;
   game.screen = id;
   if (id === 'leaders') game.loadBoard();
-  if (game.inMatch) document.getElementById('shell')?.classList.remove('hidden');
+  if (game.inMatch) {
+    if (!game.paused) pause();
+    showPause(game, false);
+    showHUD(false);
+  }
   refresh(game);
 };
 game.setLang = (lang) => {
@@ -977,9 +1018,14 @@ game.readSettingsFromDom = () => {
   if (view?.setQuality) {
     view.setQuality(game.settings.quality);
     view.state.palette = teamPalette(game.settings.colorblind);
+    view.state.reduceFx = game.settings.reduceFx;
   }
   saveSettings();
-  if (game.screen === 'settings') refresh(game);
+  document.documentElement.style.setProperty('--hud', String(game.settings.hudScale || 1));
+  document.documentElement.classList.toggle('reduce-motion', game.settings.reduceMotion);
+  document.querySelectorAll('[data-value]').forEach((el) => {
+    el.textContent = Number(game.settings[el.dataset.value]).toFixed(2);
+  });
 };
 game.setName = (name) => {
   const clean = String(name || '').replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 16);
@@ -1121,6 +1167,8 @@ function currentLoadout() {
 function openEditor() {
   const map = blankMap();
   game.editor = { tool: 'crate', map, yaw: 0.8 };
+  input.reset();
+  input.capture = true;
   game.inMatch = true;
   game.freePos = { x: 8, y: 8, z: 8 };
   game.yaw = 2.4;
@@ -1129,6 +1177,7 @@ function openEditor() {
   if (view.state.showcase) { view.scene.remove(view.state.showcase.group); view.state.showcase = null; }
   view.buildMap(map);
   showHUD(false);
+  document.getElementById('shell')?.classList.add('hidden');
   showEditorTools(game);
 }
 function tickEditor(dt) {
@@ -1284,6 +1333,8 @@ async function onRelay(msg) {
       saveProfile();
     }
     showResults(game, summary);
+    input.capture = false;
+    input.reset();
     input.exitLock();
   } else if (msg.type === 'error') {
     if (msg.key === 'rank.locked' && msg.seconds) game.profile.rank.banUntil = Date.now() + msg.seconds * 1000;
@@ -1461,6 +1512,7 @@ async function bootGraphics() {
     game.view = real;
     real.setQuality(game.settings.quality);
     real.state.palette = teamPalette(game.settings.colorblind);
+    real.state.reduceFx = game.settings.reduceFx;
     if (!game.inMatch && !game.starting && !game.editor) bootMenu();
   } catch (err) {
     console.error(err);
