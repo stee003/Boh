@@ -36,6 +36,9 @@ export class Input {
       this.mouse.wheel += Math.sign(e.deltaY);
     }, { passive: true });
     window.addEventListener('blur', () => this.keys.clear());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.keys.clear();
+    });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement != null;
     });
@@ -43,6 +46,7 @@ export class Input {
 
   setBindings(bindings) {
     this.bindings = bindings;
+    this.boundCodes = new Set(Object.values(bindings || {}).filter((c) => !String(c).startsWith('Mouse')));
   }
 
   onKey(e, down) {
@@ -56,7 +60,8 @@ export class Input {
     }
     if (down) this.keys.add(e.code);
     else this.keys.delete(e.code);
-    if (['Tab', 'Space'].includes(e.code) && this.capture) e.preventDefault();
+    // While playing, game keys must not scroll the page, move focus, or trigger browser shortcuts.
+    if (this.capture && this.boundCodes?.has(e.code)) e.preventDefault();
   }
 
   onMouseButton(e, down) {
@@ -100,8 +105,20 @@ export class Input {
   pollPad(settings) {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const gp = pads && (pads[0] || pads[1]);
-    this.pad.active = !!(gp && gp.connected);
-    if (!gp || !gp.connected) return;
+    if (!gp || !gp.connected) {
+      // A disconnected pad must not keep feeding its last axis values (the classic
+      // "character keeps strafing after the controller drops" bug).
+      if (this.pad.active || this.pad.moveX || this.pad.moveY || this.pad.lookX || this.pad.lookY || Object.keys(this.pad.buttons).length) {
+        this.pad.active = false;
+        this.pad.moveX = 0;
+        this.pad.moveY = 0;
+        this.pad.lookX = 0;
+        this.pad.lookY = 0;
+        this.pad.buttons = {};
+      }
+      return;
+    }
+    this.pad.active = true;
     const dz = settings.deadzone ?? 0.16;
     const ax = (v) => (Math.abs(v) < dz ? 0 : v);
     this.pad.moveX = ax(gp.axes[0] || 0);

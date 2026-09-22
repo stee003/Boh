@@ -14,6 +14,7 @@ export function stepAbilityTimers(player, dt) {
   player.ultActiveT = Math.max(0, (player.ultActiveT || 0) - dt);
   player.resistT = Math.max(0, (player.resistT || 0) - dt);
   player.slamWindow = Math.max(0, (player.slamWindow || 0) - dt);
+  player.flashed = Math.max(0, (player.flashed || 0) - dt);
   player.jumpMul = player.ultId === 'skyhook' && player.ultActiveT > 0 ? 1.35 : 1;
   player.gravMul = player.ultId === 'skyhook' && player.ultActiveT > 0 ? 0.72 : 1;
   player.meleeMul = player.ultId === 'unbreakable' && player.ultActiveT > 0 ? 1.45 : 1;
