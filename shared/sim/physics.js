@@ -443,7 +443,11 @@ export function cameraPose(player, solids, ads = 0) {
   const right = rightXZ(player.yaw);
   const shoulder = player.shoulder || 1;
   const dist = 3.15 + (1.55 - 3.15) * ads;
-  const side = (0.52 + (0.32 - 0.52) * ads) * shoulder;
+  // Keep the camera on the left shoulder so the equipped weapon reads on the
+  // operator's right side, like a conventional shooter. The old positive
+  // offset put the camera behind the weapon hand and made the gun disappear
+  // behind the wide operator silhouette.
+  const side = -(0.42 + (0.28 - 0.42) * ads) * shoulder;
   const eye = player.y + eyeHeight(player);
   const focus = {
     x: player.x + right.x * side * 0.22,

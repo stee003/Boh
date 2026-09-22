@@ -1033,6 +1033,8 @@ export function publicPlayer(p, full = false) {
     ping: p.ping || 0, isBot: !!p.isBot, isDummy: !!p.isDummy, isDecoy: !!p.isDecoy,
     ult: full ? p.ult : undefined,
     tacticalCd: full ? p.tacticalCd : undefined,
+    speedBuffT: full ? p.speedBuffT : undefined,
+    ultActiveT: full ? p.ultActiveT : undefined,
     dodgeCd: full ? p.dodgeCd : undefined,
     mag: full ? (p.weapons?.[p.weaponSlot]?.mag ?? 0) : undefined,
     reserve: full ? (p.weapons?.[p.weaponSlot]?.reserve ?? 0) : undefined,

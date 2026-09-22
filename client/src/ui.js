@@ -39,9 +39,10 @@ function opPortrait(c, teamColor) {
   const v = c.visual || {};
   const A = v.accent || '#5cffd6';
   const TC = teamColor || A;
-  const bulk = v.bulk || 1;
-  const sl = v.shoulders?.[0] ?? 1;
-  const sr = v.shoulders?.[1] ?? 1;
+  // Match the in-game rig's slimmer, athletic silhouette in the UI portraits.
+  const bulk = (v.bulk || 1) * 0.86;
+  const sl = (v.shoulders?.[0] ?? 1) * 0.9;
+  const sr = (v.shoulders?.[1] ?? 1) * 0.9;
   const cx = 60;
   const hw = 26 * bulk; // torso half-width
   const shY = 92 - (sl + sr) * 4; // shoulder line drops when bulky
@@ -729,6 +730,11 @@ export function renderHUD(game) {
       <div class="timer" id="timer">0:00</div>
       <div id="mode-label" class="fine"></div>
     </div>
+    <div class="kill-counter" aria-live="polite">
+      <span class="kill-counter-label">${esc(game.t('hud.elim'))}</span>
+      <strong id="personal-kills">0</strong>
+      <span class="kill-counter-caption">${esc(game.t('hud.personal'))}</span>
+    </div>
     <div class="compass" id="compass"></div>
     <canvas class="minimap" id="minimap" width="148" height="148"></canvas>
     <div class="feed" id="feed"></div>
@@ -744,8 +750,14 @@ export function renderHUD(game) {
         <div class="sub" id="status-line"></div>
       </div>
       <div class="abilities">
-        <div class="ability" id="tac"><span class="key" id="tac-key">Q</span><span id="tac-name"></span><div class="cd hidden" id="tac-cd"></div></div>
-        <div class="ability ult" id="ult"><span class="key" id="ult-key">Z</span><span id="ult-name"></span><div class="cd hidden" id="ult-cd"></div></div>
+        <div class="ability" id="tac">
+          <span class="key" id="tac-key">Q</span><span class="ability-kind">${esc(game.t('hud.tactical'))}</span>
+          <strong id="tac-name"></strong><small id="tac-desc"></small><div class="cd hidden" id="tac-cd"></div>
+        </div>
+        <div class="ability ult" id="ult">
+          <span class="key" id="ult-key">Z</span><span class="ability-kind">${esc(game.t('hud.ultimate'))}</span>
+          <strong id="ult-name"></strong><small id="ult-desc"></small><div class="ult-meter"><span id="ult-meter-fill"></span></div><div class="cd hidden" id="ult-cd"></div>
+        </div>
       </div>
       <div class="ammo" id="ammo-panel">
         <div class="ammo-row"><strong id="ammo">30</strong><em id="ammo-reserve">/ 120</em></div>
@@ -792,18 +804,46 @@ export function updateHUD(game, player, match) {
   if (player.reloading) st.push(game.t('hud.reload'));
   if (!player.alive) st.push(`${game.t('hud.respawn')} ${Math.max(0, player.deathT || 0).toFixed(1)}`);
   if (player.slowT > 0) st.push(game.t('hud.loss'));
+  if ((player.speedBuffT || 0) > 0) st.push(`${game.t('hud.active')} ${player.speedBuffT.toFixed(1)}s`);
+  if ((player.ultActiveT || 0) > 0) st.push(`${game.t('hud.ultimate')} ${game.t('hud.active').toLowerCase()} ${player.ultActiveT.toFixed(1)}s`);
+  if (player.phasing || (player.phasingT || 0) > 0) st.push(`${game.t('hud.active')} · ${game.t('op.vesper.tactical').split(':')[0]}`);
   set('status-line', st.join(' · '));
   const mag = player.weapons?.[player.weaponSlot || 0];
   const def = WEAPON_LIST.find((w) => w.id === (player.weaponId || mag?.defId));
   set('ammo', player.alive ? (def?.melee ? '—' : `${mag?.mag ?? player.mag ?? 0}`) : '');
   set('weapon-name', def ? game.t(def.nameKey) : '');
+  set('personal-kills', String(player.kills || 0));
   const ch = CHARACTERS.find((c) => c.id === player.characterId);
-  set('tac-name', ch ? game.t('hud.tactical') : '');
-  set('ult-name', ch ? game.t('hud.ultimate') : '');
+  const abilityDesc = (key) => {
+    if (!ch) return '';
+    const full = String(game.t(key === 'tactical' ? ch.tacticalKey : ch.ultimateKey));
+    const parts = full.split(':');
+    return (parts.slice(1).join(':').trim() || full).replace(/\.$/, '');
+  };
+  set('tac-key', bindLabel(game, 'tactical', 'KeyQ'));
+  set('ult-key', bindLabel(game, 'ultimate', 'KeyZ'));
+  set('tac-name', ch ? abilityName(game, ch, 'tactical') : '');
+  set('ult-name', ch ? abilityName(game, ch, 'ultimate') : '');
+  set('tac-desc', abilityDesc('tactical'));
+  set('ult-desc', abilityDesc('ultimate'));
+  const ultMeter = document.getElementById('ult-meter-fill');
+  if (ultMeter) ultMeter.style.width = `${Math.max(0, Math.min(100, player.ult || 0))}%`;
   const tac = document.getElementById('tac');
   const ult = document.getElementById('ult');
   const tacCd = document.getElementById('tac-cd');
   const ultCd = document.getElementById('ult-cd');
+  const pulse = game.abilityPulse;
+  for (const [el, kind] of [[tac, 'tactical'], [ult, 'ultimate']]) {
+    if (!el) continue;
+    const active = !!pulse && pulse.kind === kind && pulse.life > 0;
+    el.classList.toggle('cast', active);
+    if (active && el.dataset.castSeq !== String(pulse.seq)) {
+      el.dataset.castSeq = String(pulse.seq);
+      el.classList.remove('cast');
+      void el.offsetWidth;
+      el.classList.add('cast');
+    }
+  }
   if (tac && tacCd) {
     const ready = (player.tacticalCd || 0) <= 0 && player.alive;
     tac.classList.toggle('ready', ready);
