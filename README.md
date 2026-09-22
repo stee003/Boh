@@ -53,6 +53,12 @@ The game keeps its third-person shoulder view, with standard FPS-style mouse inp
 
 Characters use articulated, blended procedural animation for movement, crouch, slide, jump/landing, dodge, vault, reload, melee and death. Every shot event drives its own muzzle flash/recoil, including automatic fire. Reduced motion disables decorative UI/lobby motion and camera shake/kick; essential character action cues remain visible.
 
+## Model preview (headless)
+
+`node tools/preview-model.mjs` builds the real operator/weapon meshes from the shipped
+render code and rasterises three-view turnaround sheets into `.preview/` (gitignored).
+Useful for reviewing character and weapon geometry without a browser.
+
 ## Regression checks
 
 ```bash
