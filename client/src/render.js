@@ -33,9 +33,16 @@ function matFor(map, name, visual) {
 }
 
 export function createView(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  // A discrete-GPU hint can stall context creation for minutes inside a preview iframe.
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: false,
+    alpha: false,
+    powerPreference: 'default',
+    failIfMajorPerformanceCaveat: false,
+  });
   renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = false;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -47,7 +54,7 @@ export function createView(canvas) {
   const hemi = new THREE.HemisphereLight('#9ecbff', '#1a120c', 0.55);
   const sun = new THREE.DirectionalLight('#fff1d6', 1.15);
   sun.position.set(18, 32, 10);
-  sun.castShadow = true;
+  sun.castShadow = false;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 2;
   sun.shadow.camera.far = 90;

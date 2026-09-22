@@ -6,9 +6,6 @@
   <title>VECTORBREAK</title>
   <meta name="description" content="Vectorbreak — a fast third-person arena shooter. Break the line. Own the lattice." />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
@@ -19,6 +16,29 @@
     <h1>VECTORBREAK</h1>
     <p data-boot-line>Linking lattice…</p>
   </div>
+  <script>
+    (function () {
+      var it = /^it/i.test(navigator.language || '');
+      document.documentElement.lang = it ? 'it' : 'en';
+      var line = document.querySelector('[data-boot-line]');
+      if (line) line.textContent = it ? 'Collegamento al reticolo…' : 'Linking lattice…';
+      window.__vbDismiss = function () {
+        var boot = document.getElementById('boot');
+        if (boot) boot.remove();
+        window.__vbReady = true;
+      };
+      setTimeout(function () {
+        if (window.__vbReady || !line) return;
+        line.textContent = it
+          ? 'Il client non è partito. Ricarica la pagina.'
+          : 'The client did not start. Reload the page.';
+      }, 12000);
+      window.addEventListener('error', function (ev) {
+        if (window.__vbReady || !line) return;
+        line.textContent = (it ? 'Avvio interrotto: ' : 'Boot failed: ') + (ev && ev.message ? ev.message : 'error');
+      });
+    })();
+  </script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
