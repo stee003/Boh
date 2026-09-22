@@ -991,6 +991,7 @@ export function publicPlayer(p, full = false) {
     crouch: !!p.crouch, sliding: !!p.sliding, aiming: !!p.aiming, sprinting: !!p.sprinting,
     onGround: !!p.onGround, dodging: !!p.dodging, vault: (p.vaultT || 0) > 0,
     hp: p.hp, armor: p.armor, alive: p.alive, maxHp: p.maxHp,
+    reloadT: p.reloadT || 0, meleeCd: p.meleeCd || 0,
     weaponId: currentDef(p).id, firing: !!p.firing, reloading: !!p.reloading,
     shoulder: p.shoulder || 1, revealed: (p.revealedT || 0) > 0,
     score: p.score, kills: p.kills, deaths: p.deaths, assists: p.assists,

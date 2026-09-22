@@ -1,3 +1,4 @@
+import { animatePose, damp } from './animation.js';
 import * as THREE from 'three';
 import { cameraPose } from '@shared/sim/physics.js';
 import { getCharacter } from '@shared/characters.js';
@@ -298,86 +299,43 @@ export function createView(canvas) {
     const view = ensureActor(player);
     const g = view.group;
     if (opts.hide) { g.visible = false; return view; }
-    g.visible = player.alive || (view.fall || 0) < 1;
+    g.visible = player.alive || (view.animation.death || 0) < 1;
     g.position.set(player.x, player.y, player.z);
-    const speed = Math.hypot(player.vx, player.vz);
-    const moveYaw = speed > 0.6 ? Math.atan2(player.vx, -player.vz) : player.yaw;
-    view.bodyYaw = dampAngle(view.bodyYaw, player.alive ? moveYaw : player.yaw, 9, dt);
-    // The actor model's front faces local +Z, while the sim convention is "yaw 0 looks down -Z".
-    // Pi - yaw maps the model front onto the actual aim/movement direction (without this flip the
-    // character ran backwards and the visible gun never pointed where the crosshair was).
+    if (opts.weaponId && view.weaponId !== opts.weaponId) {
+      attachWeapon(view, opts.weaponId);
+      view.equip = 1;
+    }
+    view.bodyYaw = dampAngle(view.bodyYaw, player.yaw || 0, 16, dt);
     g.rotation.set(0, Math.PI - view.bodyYaw, 0);
-    const aim = shortest(view.bodyYaw, player.yaw);
-    view.torso.rotation.y = Math.max(-1.05, Math.min(1.05, aim));
-    view.torso.rotation.x = player.pitch * 0.4;
-    view.head.rotation.x = player.pitch * 0.25;
-    view.phase += dt * (4 + speed * 1.3);
-    const swing = Math.sin(view.phase * 2) * Math.min(0.85, speed * 0.09);
-    const crouch = player.crouch || player.sliding;
-    if (!player.alive) {
-      view.fall = Math.min(1.2, (view.fall || 0) + dt * 2.4);
-      g.rotation.z = view.fall * 1.35;
-      g.position.y = player.y + 0.15 * (1 - Math.min(1, view.fall));
-    } else {
-      view.fall = 0;
-      if (player.sliding) {
-        view.hips.position.y = 0.42;
-        view.hips.rotation.x = 1.05;
-        view.legL.rotation.x = 0.2;
-        view.legR.rotation.x = 1.2;
-      } else if (!player.onGround) {
-        view.hips.position.y = 0.9;
-        view.hips.rotation.x = -0.15;
-        view.legL.rotation.x = -0.45;
-        view.legR.rotation.x = 0.35;
-      } else if (crouch) {
-        view.hips.position.y = 0.58;
-        view.hips.rotation.x = 0.35;
-        view.legL.rotation.x = swing * 0.35 + 0.5;
-        view.legR.rotation.x = -swing * 0.35 + 0.5;
-      } else {
-        const bob = speed < 0.6 ? Math.sin(view.phase * 1.5) * 0.008 : Math.abs(Math.sin(view.phase * 2)) * 0.025 * Math.min(1, speed / 4);
-        view.hips.position.y = 0.9 + bob;
-        view.hips.rotation.x = speed > 7 ? 0.12 : 0;
-        view.legL.rotation.x = swing;
-        view.legR.rotation.x = -swing;
-      }
-    }
-    // Two-handed stance: arms track the aim vector (with a small hip offset), ADS pulls the gun to the eye.
-    view.ads = (view.ads || 0) + ((player.aiming ? 1 : 0) - (view.ads || 0)) * Math.min(1, dt * 14);
-    const a = view.ads || 0;
-    const p = player.pitch || 0;
-    view.armR.rotation.x = p - 0.12 + 0.09 * a;
-    view.armL.rotation.x = p - 0.32 + 0.2 * a;
-    view.armR.rotation.z = -0.15 * (1 - a);
-    view.armL.rotation.z = 0.25 * (1 - a);
-    view.armR.position.y = 0.42 + 0.05 * a;
-    view.armR.position.z = 0.08 + 0.04 * a;
-    if (player.reloading) view.armL.rotation.x = p - 0.5 + Math.sin(performance.now() / 70) * 0.25;
-    if ((player.meleeCd || 0) > 0.12) view.armR.rotation.x = p + 0.08;
+    view.upper.rotation.y = -shortest(view.bodyYaw, player.yaw || 0);
+    view.phase += dt;
+    const pose = animatePose(view.animation, player, dt);
+    view.hips.position.y = pose.height;
+    view.hips.rotation.set(pose.lean, 0, pose.roll);
+    view.head.rotation.x = -(player.pitch || 0) * 0.4;
+    view.ads = damp(view.ads || 0, player.aiming ? 1 : 0, 14, dt);
+    view.armR.position.set(0.32 - view.ads * 0.08, 0.42 + view.ads * 0.06, 0.08);
+    view.legL.rotation.x = pose.legL;
+    view.legR.rotation.x = pose.legR;
+    view.kneeL.rotation.x = pose.kneeL;
+    view.kneeR.rotation.x = pose.kneeR;
+    view.armR.rotation.set(pose.armR, 0, -0.08);
+    view.armL.rotation.set(pose.armL, 0, -0.32);
+    view.elbowR.rotation.x = pose.elbowR;
+    view.elbowL.rotation.x = pose.elbowL;
     if (opts.emote) {
-      view.armR.rotation.x = -2.2;
-      view.armL.rotation.x = -2.2;
+      view.armR.rotation.x = -2.6;
+      view.armL.rotation.x = -2.6;
     }
-    // Muzzle flash + weapon recoil kick
-    const firing = !!player.firing;
-    if (firing && !view.prevFiring) {
-      view.flashT = 0.055;
-      view.kick = 1;
-    }
-    view.prevFiring = firing;
-    view.kick = Math.max(0, (view.kick || 0) - dt * 9);
+    view.equip = damp(view.equip || 0, 0, 12, dt);
+    view.kick = damp(view.kick || 0, 0, 22, dt);
     view.flashT = Math.max(0, (view.flashT || 0) - dt);
-    if (view.flash) {
-      const on = view.flashT > 0;
-      view.flash.visible = on && !player.isDummy;
-      view.flash.scale.setScalar(on ? 0.7 + Math.random() * 0.6 : 0.0001);
-      if (on) view.flash.rotation.y = Math.random() * Math.PI;
-    }
-    if (view.weapon) {
-      view.weapon.position.z = view.weaponBaseZ + view.kick * 0.055;
-      view.weapon.rotation.x = view.kick * 0.3;
-    }
+    view.flash.visible = view.flashT > 0 && !player.isDummy;
+    view.flash.rotation.z += dt * 45;
+    view.weapon.position.z = view.weaponBaseZ - view.kick * 0.08;
+    // Counter-rotate the bent elbow so the barrel follows the actual pitch.
+    view.weapon.rotation.set(1.5 - view.kick * 0.12 + pose.gunTilt + view.equip * 0.65, 0, pose.gunRoll);
+    if (view.magazine) view.magazine.position.y = view.magazine.userData.baseY - pose.magDrop;
     if (view.drone) {
       view.drone.position.y = view.droneBaseY + Math.sin(view.phase * 1.7) * 0.03;
       view.drone.rotation.y = view.phase * 0.8;
@@ -405,8 +363,16 @@ export function createView(canvas) {
       });
       view.wasFlashed = flashing;
     }
-    if (opts.weaponId && view.weaponId !== opts.weaponId) attachWeapon(view, opts.weaponId);
     return view;
+  }
+
+  // Shot events, not the held-fire flag, drive every automatic-fire impulse.
+  function shot(playerId) {
+    const actor = state.actors.get(playerId);
+    if (!actor) return;
+    actor.flashT = 0.065;
+    actor.flash.visible = true;
+    actor.kick = 1;
   }
 
   function dropMissing(ids) {
@@ -426,6 +392,7 @@ export function createView(canvas) {
   }
 
   function impact(point, normal = [0, 1, 0], color = '#ffb03a') {
+    if (state.reduceFx) return;
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), new THREE.MeshBasicMaterial({ color }));
     m.position.set(point[0], point[1], point[2]);
     m.userData.life = 0.18;
@@ -439,6 +406,7 @@ export function createView(canvas) {
   }
 
   function ring(x, y, z, color, life = 0.45) {
+    if (state.reduceFx) return;
     const mesh = new THREE.Mesh(
       new THREE.RingGeometry(0.2, 0.35, 20),
       new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }),
@@ -475,7 +443,7 @@ export function createView(canvas) {
     );
     state.shake = Math.max(0, state.shake - dt * 2.4) + (extras.shake || 0);
     state.fovKick = Math.max(0, state.fovKick - dt * 48) + (extras.fov || 0);
-    const shake = extras.reduce ? state.shake * 0.25 : state.shake;
+    const shake = extras.reduce ? 0 : state.shake;
     camera.position.set(
       pose.pos.x + (Math.random() - 0.5) * shake,
       pose.pos.y + (Math.random() - 0.5) * shake * 0.55,
@@ -486,7 +454,7 @@ export function createView(canvas) {
     const zoom = player.aiming ? (extras.zoom || 1) : 1;
     const base = extras.baseFov || 74;
     const sprint = Math.hypot(player.vx || 0, player.vz || 0) > 8.2 && !player.aiming ? 3 : 0;
-    camera.fov = (base + sprint + state.fovKick) / zoom;
+    camera.fov = damp(camera.fov, (base + (extras.reduce ? 0 : sprint + state.fovKick)) / zoom, 14, dt);
     camera.updateProjectionMatrix();
   }
 
@@ -646,8 +614,11 @@ export function createView(canvas) {
       state.showcase.group.rotation.y = a * 0.35;
       state.showcase.phase = (state.showcase.phase || 0) + dt;
       const s = Math.sin(state.showcase.phase * 2) * 0.25;
-      state.showcase.armR.rotation.x = -0.5 + s * 0.08;
-      state.showcase.armL.rotation.x = -0.32 + s * 0.06;
+      state.showcase.armR.rotation.x = -1.05 + s * 0.08;
+      state.showcase.elbowR.rotation.x = -0.45;
+      state.showcase.weapon.rotation.x = 1.5;
+      state.showcase.armL.rotation.x = -1.15 + s * 0.06;
+      state.showcase.elbowL.rotation.x = -0.6;
       state.showcase.hips.position.y = 0.9 + Math.sin(state.showcase.phase * 1.5) * 0.02;
     }
   }
@@ -686,7 +657,7 @@ export function createView(canvas) {
 
   return {
     state, resize, setQuality, buildMap, clearMap, syncBoxes, updateActor, dropMissing,
-    tracer, impact, ring, tickFx, frameCamera, frameFree, menuStage, setShowcase, tickMenu, render, minimap, syncWorld,
+    shot, tracer, impact, ring, tickFx, frameCamera, frameFree, menuStage, setShowcase, tickMenu, render, minimap, syncWorld,
     camera, scene,
   };
 }
@@ -825,41 +796,49 @@ function buildActor(player, palette) {
   const armR = new THREE.Group();
   armL.position.set(-0.32, 0.42, 0);
   armR.position.set(0.32, 0.42, 0.08);
-  const makeArm = (padScale) => {
-    const limb = box(0.12, 0.42, 0.12, dark);
-    limb.position.y = -0.2;
-    limb.castShadow = true;
+  const makeArm = (arm, padScale) => {
+    const limb = box(0.12, 0.23, 0.12, dark);
+    limb.position.y = -0.11;
     const pad = box(0.17, 0.11, 0.17, clothDark);
-    pad.position.y = 0.03;
-    pad.scale.set(padScale, padScale, padScale);
+    pad.scale.setScalar(padScale);
     const padEdge = box(0.175, 0.02, 0.175, accentMat);
     padEdge.position.y = -0.045;
-    padEdge.scale.set(padScale, 1, padScale);
-    const glove = box(0.11, 0.12, 0.11, dark);
-    glove.position.y = -0.44;
-    return [limb, pad, padEdge, glove];
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.23;
+    const forearm = box(0.1, 0.22, 0.11, clothDark);
+    forearm.position.y = -0.1;
+    const glove = box(0.11, 0.1, 0.11, dark);
+    glove.position.y = -0.23;
+    elbow.add(forearm, glove);
+    arm.add(limb, pad, padEdge, elbow);
+    return elbow;
   };
-  for (const m of makeArm(shoulderL)) armL.add(m);
-  for (const m of makeArm(shoulderR)) armR.add(m);
+  const elbowL = makeArm(armL, shoulderL);
+  const elbowR = makeArm(armR, shoulderR);
   const weapon = new THREE.Group();
-  weapon.position.set(0, -0.36, 0.12);
-  armR.add(weapon);
+  weapon.position.set(0, -0.24, 0.06);
+  elbowR.add(weapon);
 
-  // Legs with boots
+  // Articulated knees and planted boots (hips are 0.9 m above the ground).
   const legL = new THREE.Group();
   const legR = new THREE.Group();
   legL.position.set(-0.12, 0, 0);
   legR.position.set(0.12, 0, 0);
-  const makeLeg = () => {
-    const mesh = box(0.13, 0.48, 0.14, cloth);
-    mesh.position.y = -0.24;
-    mesh.castShadow = true;
-    const boot = box(0.145, 0.09, 0.19, dark);
-    boot.position.set(0, -0.46, 0.02);
-    return [mesh, boot];
+  const makeLeg = (leg) => {
+    const thigh = box(0.14, 0.4, 0.15, cloth);
+    thigh.position.y = -0.2;
+    const knee = new THREE.Group();
+    knee.position.y = -0.4;
+    const shin = box(0.12, 0.37, 0.14, clothDark);
+    shin.position.y = -0.18;
+    const boot = box(0.15, 0.12, 0.25, dark);
+    boot.position.set(0, -0.42, 0.05);
+    knee.add(shin, boot);
+    leg.add(thigh, knee);
+    return knee;
   };
-  for (const m of makeLeg()) legL.add(m);
-  for (const m of makeLeg()) legR.add(m);
+  const kneeL = makeLeg(legL);
+  const kneeR = makeLeg(legR);
   if (v.longLegs) {
     legL.scale.y = 1.1;
     legR.scale.y = 1.1;
@@ -905,8 +884,10 @@ function buildActor(player, palette) {
     parts.push(slim);
   }
 
-  for (const m of parts) hips.add(m);
-  hips.add(head, armL, armR, legL, legR);
+  const upper = new THREE.Group();
+  for (const m of parts) (m === pelvis ? hips : upper).add(m);
+  upper.add(head, armL, armR);
+  hips.add(upper, legL, legR);
   group.add(hips);
 
   const visor = head.userData.visor;
@@ -915,11 +896,12 @@ function buildActor(player, palette) {
     new THREE.MeshBasicMaterial({ color: '#ffe9b0', transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false }),
   );
   flash.visible = false;
-  flash.position.set(0, -0.36, 0.12 + 0.5);
-  armR.add(flash);
+  flash.position.set(0, 0, 0.6);
+  weapon.add(flash);
 
   const view = {
-    group, hips, torso, head, visor, armL, armR, legL, legR, weapon, flash,
+    group, hips, upper, torso, head, visor, armL, armR, elbowL, elbowR, legL, legR, kneeL, kneeR, weapon, flash,
+    animation: {},
     charId: player.characterId, team: player.team,
     bodyYaw: 0, phase: Math.random() * 6,
     weaponId: null, weaponBaseZ: 0.12, flashT: 0, kick: 0, prevFiring: false,
@@ -934,8 +916,10 @@ function buildActor(player, palette) {
 function attachWeapon(view, weaponId) {
   const def = getWeapon(weaponId);
   view.weaponId = weaponId;
-  while (view.weapon.children.length) {
-    const c = view.weapon.children.pop();
+  view.magazine = null;
+  for (const c of [...view.weapon.children]) {
+    if (c === view.flash) continue;
+    view.weapon.remove(c);
     c.geometry?.dispose();
     c.material?.dispose();
   }
@@ -958,7 +942,7 @@ function attachWeapon(view, weaponId) {
     const grip = box(0.05, 0.12, 0.05, darkMat);
     grip.position.z = -0.05;
     w.add(blade, edge, guard, grip);
-    view.weaponBaseZ = 0.12;
+    view.weaponBaseZ = 0.06;
     if (view.flash) view.flash.position.z = 0.12 + 0.55;
     return;
   }
@@ -967,7 +951,7 @@ function attachWeapon(view, weaponId) {
     const tip = box(0.05, 0.05, 0.05, glowMat);
     tip.position.z = 0.08;
     w.add(knuckle, tip);
-    view.weaponBaseZ = 0.12;
+    view.weaponBaseZ = 0.06;
     return;
   }
 
@@ -991,15 +975,21 @@ function attachWeapon(view, weaponId) {
     drum.rotation.x = Math.PI / 2;
     drum.position.set(0, -0.09, 0.1);
     w.add(drum);
+    view.magazine = drum;
+    drum.userData.baseY = drum.position.y;
   } else if (mag === 'cell') {
     const cell = box(0.06, 0.09, 0.12, glowMat);
     cell.position.set(0, -0.1, 0.08);
     w.add(cell);
+    view.magazine = cell;
+    cell.userData.baseY = cell.position.y;
   } else if (mag === 'straight' || mag === undefined) {
     const magMesh = box(0.05, 0.16, 0.07, darkMat);
     magMesh.position.set(0, -0.12, 0.07);
     magMesh.rotation.x = 0.12;
     w.add(magMesh);
+    view.magazine = magMesh;
+    magMesh.userData.baseY = magMesh.position.y;
   }
   if (def.visual?.stock) {
     const stock = box(0.05, 0.09, 0.16, darkMat);
@@ -1032,13 +1022,13 @@ function attachWeapon(view, weaponId) {
   stripe.position.set(0.038, 0.0, 0.0);
   w.add(stripe);
 
-  view.weaponBaseZ = 0.12;
+  view.weaponBaseZ = 0.06;
   if (view.flash) view.flash.position.z = 0.17 + barrel + 0.06;
 }
 
 function dampAngle(current, target, speed, dt) {
   const d = shortest(current, target);
-  return current + d * Math.min(1, speed * dt);
+  return current + d * (1 - Math.exp(-speed * dt));
 }
 
 function shortest(a, b) {

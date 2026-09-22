@@ -181,13 +181,16 @@ export function mountUI(root, game) {
         </div>
       </div>
       <div class="top-actions">
+        <button class="ghost" data-act="resume" id="menu-resume" hidden data-i18n="play.resume"></button>
+        <button class="ghost settings-shortcut" data-act="nav" data-id="settings" data-i18n="menu.settings"></button>
         <div class="lang" role="group" aria-label="language">
           <button data-act="lang" data-lang="en" id="lang-en">EN</button>
           <button data-act="lang" data-lang="it" id="lang-it">IT</button>
         </div>
       </div>
       <nav class="nav" id="nav"></nav>
-      <section class="panel" id="panel"></section>
+      <section class="menu-hero" id="menu-hero"></section>
+      <section class="panel" id="panel" aria-live="polite"></section>
       <footer class="footer">
         <span id="foot-season"></span>
         <span id="foot-status"></span>
@@ -203,6 +206,7 @@ export function mountUI(root, game) {
     const act = el.dataset.act;
     const g = game;
     if (act === 'nav') g.go(el.dataset.id);
+    else if (act === 'settings-tab') { g.settingsTab = el.dataset.id; renderPanel(g); }
     else if (act === 'lang') g.setLang(el.dataset.lang);
     else if (act === 'play') g.play();
     else if (act === 'ranked') g.playRanked();
@@ -267,8 +271,12 @@ export function mountUI(root, game) {
 export function refresh(game) {
   const nav = document.getElementById('nav');
   if (!nav) return;
-  nav.innerHTML = NAV.map(([id, key]) =>
-    `<button data-act="nav" data-id="${id}" class="${game.screen === id ? 'on' : ''}">${esc(game.t(key))}</button>`).join('');
+  const groups = [ ['nav.compete', ['play', 'ranked', 'practice', 'custom']], ['nav.operator', ['loadout', 'characters', 'weapons', 'customize']], ['nav.community', ['profile', 'leaders', 'social']], ['nav.system', ['settings', 'exit']] ];
+  nav.innerHTML = groups.map(([label, ids]) => `<div class="nav-group"><p>${esc(game.t(label))}</p>${ids.map((id) => {
+    const key = NAV.find((n) => n[0] === id)[1];
+    return `<button data-act="nav" data-id="${id}" ${game.screen === id ? 'aria-current="page"' : ''} class="${game.screen === id ? 'on' : ''}">${esc(game.t(key))}</button>`;
+  }).join('')}</div>`).join('');
+  if (game.inMatch) nav.innerHTML = `<div class="nav-group"><p>${esc(game.t('controls.paused'))}</p><button data-act="resume">${esc(game.t('play.resume'))}</button><button class="on" data-act="nav" data-id="settings">${esc(game.t('menu.settings'))}</button><button data-act="leave">${esc(game.t('play.leave'))}</button></div>`;
   document.querySelectorAll('#lang-en, #lang-it').forEach((b) => b.classList.toggle('on', b.dataset.lang === game.i18n.lang));
   document.documentElement.lang = game.i18n.lang;
   const foot = document.getElementById('foot-season');
@@ -280,7 +288,9 @@ export function refresh(game) {
       : game.net?.online ? `${game.t('net.connected')} ${game.net.ping || 0}ms` : game.t('net.local');
   }
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = game.t(el.dataset.i18n); });
-  if (!game.inMatch) renderPanel(game);
+  if (!game.inMatch || game.paused) renderPanel(game);
+  document.getElementById('menu-resume').hidden = !game.inMatch;
+  document.documentElement.classList.toggle('reduce-motion', !!game.settings.reduceMotion);
   document.documentElement.style.setProperty('--hud', String(game.settings.hudScale || 1));
 }
 
@@ -288,39 +298,43 @@ function renderPanel(game) {
   const panel = document.getElementById('panel');
   if (!panel) return;
   const screens = { play: playScreen, ranked: rankedScreen, loadout: loadoutScreen, characters: characterScreen, weapons: weaponScreen, customize: customizeScreen, practice: practiceScreen, custom: customScreen, profile: profileScreen, leaders: leaderScreen, social: socialScreen, settings: settingsScreen };
+  const focused = panel.contains(document.activeElement) ? document.activeElement.dataset : null;
+  const optionsOpen = panel.querySelector('.match-options')?.open;
+  const home = game.screen === 'play' && !game.inMatch;
+  document.getElementById('shell').classList.toggle('home', home);
+  const hero = document.getElementById('menu-hero');
+  hero.classList.toggle('hidden', !home);
+  if (home) hero.innerHTML = `
+    <div><p class="kicker">${esc(game.t('menu.version'))}</p><h2>${esc(game.t('home.title'))}</h2><p class="hero-copy">${esc(game.t('home.desc'))}</p></div>
+    <div class="hero-bottom"><span class="live-badge">${esc(game.t('home.ready'))}</span><h3>${esc(game.t(CHARACTERS.find((c) => c.id === (game.activeCharacter?.() || game.profile.loadouts?.[game.profile.activeLoadout || 0]?.characterId || 'ryn'))?.nameKey || ''))}</h3>
+    <button class="ghost" data-act="nav" data-id="loadout">${esc(game.t('home.edit'))} ↗</button>
+    <div class="quick-links"><button data-act="tutorial">${esc(game.t('menu.tutorial'))} <span>↗</span></button><button data-act="range">${esc(game.t('home.range'))} <span>↗</span></button></div></div>`;
   panel.innerHTML = (screens[game.screen] || playScreen)(game);
+  if (optionsOpen && panel.querySelector('.match-options')) panel.querySelector('.match-options').open = true;
+  if (focused?.act) {
+    [...panel.querySelectorAll('[data-act]')].find((el) => el.dataset.act === focused.act && el.dataset.id === focused.id && el.dataset.action === focused.action)?.focus({ preventScroll: true });
+  }
 }
 
 function playScreen(game) {
   const d = game.draft;
   const modes = MODES.filter((m) => !m.practice);
   const maps = MAPS.filter((m) => m.combat);
-  return `
-    <p class="kicker">${esc(game.t('menu.quick'))}</p>
-    <h2>${esc(game.t('play.start'))}</h2>
-    <p class="lead">${esc(game.t('meta.tagline'))}</p>
-    <div class="stack">
-      <div class="row">${modes.map((m) => chip('mode', m.id, game.t(m.nameKey), d.modeId === m.id)).join('')}</div>
-      <p class="fine">${esc(game.t(MODES.find((m) => m.id === d.modeId)?.descKey || ''))}</p>
-      <div class="row">
-        ${chip('map', 'random', game.t('play.random'), d.mapId === 'random')}
-        ${maps.map((m) => chip('map', m.id, game.t(m.nameKey), d.mapId === m.id)).join('')}
-      </div>
-      <div class="row">${DIFFICULTY_IDS.map((id) => chip('diff', id, game.t('diff.' + id), d.difficulty === id)).join('')}</div>
-      <div class="row">
-        ${chip('team', 'a', game.t('score.team_a'), d.team === 'a')}
-        ${chip('team', 'b', game.t('score.team_b'), d.team === 'b')}
-        ${chip('fill', 'bots', game.t('play.fill'), d.fill === 'bots')}
-        ${chip('fill', 'empty', game.t('custom.bots') + ' 0', d.fill === 'empty')}
-      </div>
-      <div class="row">
-        ${chip('relay', '0', game.t('menu.offline'), !d.relay)}
-        ${chip('relay', '1', game.t('menu.online'), !!d.relay)}
-      </div>
-      <button class="primary" data-act="play">${esc(game.t('play.start'))}</button>
-      ${(game.browserRooms || []).length ? `<h3 style="margin:8px 0 4px;font-size:13px">${esc(game.t('net.browser'))}</h3><div class="stack">${game.browserRooms.map((r) => `<div class="card" style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><strong>${esc(game.t('mode.' + r.modeId + '.name'))}</strong><p class="fine">${esc(game.t('map.' + r.mapId + '.name'))} · ${r.players}/${r.capacity}${r.code ? ' · ' + esc(r.code) : ''}</p></div>${r.joinable ? `<button class="chip" data-act="join-room" data-id="${esc(r.id)}">${esc(game.t('net.join'))}</button>` : ''}</div>`).join('')}</div>` : ''}
-      <div class="card"><p class="fine">${esc(game.t('how.1'))}</p><p class="fine">${esc(game.t('how.2'))}</p><p class="fine">${esc(game.t('how.3'))}</p><p class="fine">${esc(game.t('how.4'))}</p></div>
-    </div>`;
+  const selected = modes.find((m) => m.id === d.modeId) || modes[0];
+  return `<div class="play-heading"><p class="kicker">01 / ${esc(game.t('menu.play'))}</p><h2>${esc(game.t('home.setup'))}</h2><p class="lead">${esc(game.t('home.setup_hint'))}</p></div>
+    <section class="setup-section"><h3>${esc(game.t('play.mode'))}</h3>
+    <div class="mode-grid">${modes.map((m, i) => `<button class="mode-card ${m.id === d.modeId ? 'on' : ''}" data-act="mode" data-id="${m.id}" aria-pressed="${m.id === d.modeId}"><span class="mode-index">${String(i + 1).padStart(2, '0')}</span><strong>${esc(game.t(m.nameKey))}</strong><span class="mode-check">${m.id === d.modeId ? '●' : '○'}</span></button>`).join('')}</div><p class="fine mode-description">${esc(game.t(selected.descKey))}</p></section>
+    <section class="setup-section"><h3>${esc(game.t('play.map'))}</h3><div class="row">
+      ${chip('map', 'random', game.t('play.random'), d.mapId === 'random')}
+      ${maps.map((m) => chip('map', m.id, game.t(m.nameKey), d.mapId === m.id)).join('')}</div></section>
+    <section class="setup-section"><h3>${esc(game.t('play.difficulty'))}</h3><div class="row">${DIFFICULTY_IDS.map((id) => chip('diff', id, game.t('diff.' + id), d.difficulty === id)).join('')}</div></section>
+    <details class="match-options"><summary>${esc(game.t('home.options'))}</summary><div class="stack">
+      <div class="row">${chip('team', 'a', game.t('score.team_a'), d.team === 'a')}${chip('team', 'b', game.t('score.team_b'), d.team === 'b')}</div>
+      <div class="row">${chip('fill', 'bots', game.t('play.fill'), d.fill === 'bots')}${chip('fill', 'empty', game.t('custom.bots') + ' 0', d.fill === 'empty')}</div>
+    </div></details>
+    <div class="deploy-dock"><div class="connection-choice">${chip('relay', '0', game.t('menu.offline'), !d.relay)}${chip('relay', '1', game.t('menu.online'), !!d.relay)}</div>
+    <button class="primary deploy" data-act="play">${esc(game.t('play.start'))}<span>→</span></button><p class="fine">${esc(game.t(d.relay ? 'home.relay_hint' : 'home.local_hint'))}</p></div>
+    ${(game.browserRooms || []).length ? `<h3>${esc(game.t('net.browser'))}</h3><div class="stack">${game.browserRooms.map((r) => `<div class="card"><strong>${esc(game.t('mode.' + r.modeId + '.name'))}</strong><p class="fine">${esc(game.t('map.' + r.mapId + '.name'))} · ${r.players}/${r.capacity}</p>${r.joinable ? `<button class="chip" data-act="join-room" data-id="${esc(r.id)}">${esc(game.t('net.join'))}</button>` : ''}</div>`).join('')}</div>` : ''}`;
 }
 
 function rankedScreen(game) {
@@ -562,57 +576,33 @@ function socialScreen(game) {
 
 function settingsScreen(game) {
   const s = game.settings;
-  const binds = Object.entries(s.bindings || {});
-  return `
-    <p class="kicker">${esc(game.t('menu.settings'))}</p>
-    <h2>${esc(game.t('menu.language'))}</h2>
-    <div class="row" style="margin-bottom:12px">
-      <button class="chip ${game.i18n.lang === 'en' ? 'on' : ''}" data-act="lang" data-lang="en">${esc(game.t('menu.english'))}</button>
-      <button class="chip ${game.i18n.lang === 'it' ? 'on' : ''}" data-act="lang" data-lang="it">${esc(game.t('menu.italian'))}</button>
-    </div>
-    ${slider(game, 'set.sens', 'sens', s.sens, 0.2, 4, 0.05)}
-    ${slider(game, 'set.ads', 'adsSens', s.adsSens, 0.3, 1, 0.05)}
-    ${slider(game, 'set.controller', 'controllerSens', s.controllerSens, 0.5, 5, 0.1)}
-    ${slider(game, 'set.deadzone', 'deadzone', s.deadzone, 0.05, 0.4, 0.01)}
-    ${slider(game, 'set.accel', 'lookAccel', s.lookAccel || 1, 1, 2.2, 0.1)}
-    ${slider(game, 'set.fov', 'fov', s.fov, 60, 100, 1)}
-    ${slider(game, 'set.master', 'master', s.master, 0, 1, 0.01)}
-    ${slider(game, 'set.music', 'music', s.music, 0, 1, 0.01)}
-    ${slider(game, 'set.sfx', 'sfx', s.sfx, 0, 1, 0.01)}
-    ${slider(game, 'set.voice', 'voice', s.voice, 0, 1, 0.01)}
-    ${slider(game, 'set.ui_scale', 'hudScale', s.hudScale, 0.8, 1.5, 0.05)}
-    <label class="field"><span><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}/> ${esc(game.t('set.inverty'))}</span></label>
-    <label class="field"><span><input type="checkbox" data-setting="screenShake" ${s.screenShake !== false ? 'checked' : ''}/> ${esc(game.t('set.shake'))}</span></label>
-    <label class="field"><span><input type="checkbox" data-setting="reduceMotion" ${s.reduceMotion ? 'checked' : ''}/> ${esc(game.t('set.reduce_shake'))}</span></label>
-    <label class="field"><span><input type="checkbox" data-setting="reduceFx" ${s.reduceFx ? 'checked' : ''}/> ${esc(game.t('set.reduce_fx'))}</span></label>
-    <label class="field"><span><input type="checkbox" data-setting="subtitles" ${s.subtitles !== false ? 'checked' : ''}/> ${esc(game.t('set.subtitles'))}</span></label>
-    <label class="field"><span><input type="checkbox" data-setting="aimAssist" ${s.aimAssist !== false ? 'checked' : ''}/> ${esc(game.t('set.aimassist'))}</span></label>
-    <label class="field"><span><input type="checkbox" data-setting="damageNumbers" ${s.damageNumbers !== false ? 'checked' : ''}/> ${esc(game.t('set.damage_numbers'))}</span></label>
-    <label class="field"><span><input type="checkbox" data-setting="showFps" ${s.showFps ? 'checked' : ''}/> ${esc(game.t('set.showfps'))}</span></label>
-    <label class="field">${esc(game.t('set.preset'))}
-      <select data-setting="quality">${['low', 'medium', 'high', 'ultra'].map((q) => `<option value="${q}" ${s.quality === q ? 'selected' : ''}>${esc(game.t('set.' + q))}</option>`).join('')}</select>
-    </label>
-    <label class="field">${esc(game.t('set.colorblind'))}
-      <select data-setting="colorblind">${['off', 'deutan', 'protan', 'tritan'].map((q) => `<option value="${q}" ${s.colorblind === q ? 'selected' : ''}>${esc(game.t('set.cb.' + q))}</option>`).join('')}</select>
-    </label>
-    <label class="field">${esc(game.t('set.crosshair'))}
-      <select data-setting="crosshair">${CROSSHAIR_STYLES.map((q) => `<option value="${q}" ${(CROSSHAIR_STYLES.includes(s.crosshair) ? s.crosshair : 'bracket') === q ? 'selected' : ''}>${esc(game.t('set.ch.' + q))}</option>`).join('')}</select>
-    </label>
-    <h3 style="margin:14px 0 8px">${esc(game.t('set.bind'))}</h3>
-    <div class="stack">${binds.map(([action, code]) => `
-      <div class="statline"><span>${esc(game.t('bind.' + action))}</span><button class="chip" data-act="rebind" data-action="${action}">${esc(game.rebindAction === action ? game.t('set.press') : code)}</button></div>`).join('')}</div>
-    <div class="row" style="margin-top:12px">
-      <button class="ghost" data-act="reset-binds">${esc(game.t('menu.reset'))}</button>
-      <button class="danger" data-act="reset-profile">${esc(game.t('menu.reset'))}</button>
-    </div>`;
+  const tab = game.settingsTab || 'controls';
+  const range = (label, key, min, max, step) => slider(game, label, key, s[key], min, max, step);
+  const toggle = (label, key) => `<label class="field toggle-field"><span>${esc(game.t(label))}</span><input type="checkbox" data-setting="${key}" ${s[key] ? 'checked' : ''}></label>`;
+  const select = (label, key, options, prefix) => `<label class="field">${esc(game.t(label))}<select data-setting="${key}">${options.map((q) => `<option value="${q}" ${s[key] === q ? 'selected' : ''}>${esc(game.t(prefix + q))}</option>`).join('')}</select></label>`;
+  const tabs = ['controls', 'gameplay', 'video', 'audio', 'bindings'];
+  const content = {
+    controls: `<h3>${esc(game.t('settings.mouse'))}</h3><p class="lead">${esc(game.t('controls.hint'))}</p>
+      ${range('set.sens', 'sens', 0.2, 4, 0.05)}${range('set.ads', 'adsSens', 0.3, 1, 0.05)}${toggle('set.inverty', 'invertY')}
+      <h3>${esc(game.t('settings.controller'))}</h3>${range('set.controller', 'controllerSens', 0.5, 5, 0.1)}${range('set.deadzone', 'deadzone', 0.05, 0.4, 0.01)}${range('set.accel', 'lookAccel', 1, 2.2, 0.1)}${toggle('set.aimassist', 'aimAssist')}`,
+    gameplay: `${toggle('settings.hold_aim', 'holdAim')}${toggle('settings.toggle_crouch', 'toggleCrouch')}${toggle('settings.auto_sprint', 'autoSprint')}${toggle('set.damage_numbers', 'damageNumbers')}${toggle('set.subtitles', 'subtitles')}${range('set.ui_scale', 'hudScale', 0.8, 1.5, 0.05)}
+      ${select('set.crosshair', 'crosshair', CROSSHAIR_STYLES, 'set.ch.')}
+      <h3>${esc(game.t('menu.language'))}</h3><div class="row"><button class="chip" data-act="lang" data-lang="en">English</button><button class="chip" data-act="lang" data-lang="it">Italiano</button></div>`,
+    video: `${range('set.fov', 'fov', 60, 100, 1)}${select('set.preset', 'quality', ['low', 'medium', 'high', 'ultra'], 'set.')}${select('set.colorblind', 'colorblind', ['off', 'deutan', 'protan', 'tritan'], 'set.cb.')}${toggle('set.shake', 'screenShake')}${toggle('set.reduce_shake', 'reduceMotion')}${toggle('set.reduce_fx', 'reduceFx')}${toggle('set.showfps', 'showFps')}`,
+    audio: `${range('set.master', 'master', 0, 1, 0.01)}${range('set.music', 'music', 0, 1, 0.01)}${range('set.sfx', 'sfx', 0, 1, 0.01)}${range('set.voice', 'voice', 0, 1, 0.01)}`,
+    bindings: `<p class="lead">${esc(game.t('settings.bind_hint'))}</p><div class="binding-grid">${Object.entries(s.bindings).map(([action, code]) => `<div class="statline"><span>${esc(game.t('bind.' + action))}</span><button class="chip" data-act="rebind" data-action="${action}">${esc(game.rebindAction === action ? game.t('set.press') : code)}</button></div>`).join('')}</div><button class="ghost" data-act="reset-binds">${esc(game.t('settings.reset_bindings'))}</button>`,
+  };
+  return `<p class="kicker">${esc(game.t('nav.system'))}</p><div class="settings-heading"><h2>${esc(game.t('menu.settings'))}</h2><span class="saved-indicator">● ${esc(game.t('settings.saved'))}</span></div>
+    <div class="settings-tabs" role="tablist" aria-label="${esc(game.t('menu.settings'))}">${tabs.map((id) => `<button role="tab" aria-selected="${tab === id}" aria-controls="settings-content" class="chip ${tab === id ? 'on' : ''}" data-act="settings-tab" data-id="${id}">${esc(game.t('settings.' + id))}</button>`).join('')}</div>
+    <div class="settings-content" id="settings-content" role="tabpanel">${content[tab] || content.controls}</div>`;
 }
 
 function slider(game, labelKey, key, value, min, max, step) {
-  return `<label class="field">${esc(game.t(labelKey))} <span>${Number(value).toFixed(2)}</span>
+  return `<label class="field range-field">${esc(game.t(labelKey))} <output data-value="${key}">${Number(value).toFixed(2)}</output>
     <input type="range" min="${min}" max="${max}" step="${step}" value="${value}" data-setting="${key}" /></label>`;
 }
 function chip(act, id, label, on) {
-  return `<button class="chip ${on ? 'on' : ''}" data-act="${act}" data-id="${id}">${esc(label)}</button>`;
+  return `<button class="chip ${on ? 'on' : ''}" aria-pressed="${!!on}" data-act="${act}" data-id="${id}">${esc(label)}</button>`;
 }
 function stat(label, value) {
   return `<div class="card"><p class="fine">${esc(label)}</p><strong>${esc(value)}</strong></div>`;
@@ -768,9 +758,9 @@ export function showPause(game, on) {
   host.querySelector('.pause')?.remove();
   if (!on) return;
   host.insertAdjacentHTML('beforeend', `
-    <div class="pause"><div class="box">
+    <div class="pause" role="dialog" aria-modal="true" aria-labelledby="pause-title"><div class="box">
       <p class="kicker">VECTORBREAK</p>
-      <h2>${esc(game.t('play.resume'))}</h2>
+      <h2 id="pause-title">${esc(game.t('controls.paused'))}</h2><p class="lead">${esc(game.t('controls.hint'))}</p>
       <div class="stack">
         <button class="primary" data-act="resume">${esc(game.t('play.resume'))}</button>
         <button class="ghost" data-act="nav" data-id="settings">${esc(game.t('menu.settings'))}</button>
@@ -779,6 +769,7 @@ export function showPause(game, on) {
         <button class="danger" data-act="leave">${esc(game.t('play.leave'))}</button>
       </div>
     </div></div>`);
+  host.querySelector('[data-act="resume"]')?.focus();
 }
 
 export function showScoreboard(game, match, on) {
@@ -804,7 +795,7 @@ export function showResults(game, summary) {
   const you = summary?.players?.find((p) => p.id === game.localId);
   const won = summary?.winnerId === game.localId || (you && summary?.winnerTeam && you.team === summary.winnerTeam);
   host.innerHTML = `
-    <div class="pause"><div class="box">
+    <div class="pause" role="dialog" aria-modal="true" aria-labelledby="pause-title"><div class="box">
       <p class="kicker">${esc(game.t('score.victory'))}</p>
       <h2>${won ? esc(game.t('score.victory')) : summary?.winnerId || summary?.winnerTeam ? esc(game.t('score.defeat')) : esc(game.t('score.draw'))}</h2>
       <p class="lead">+${you?.xp || 0} ${esc(game.t('score.xp'))} · +${you?.credits || 0} ${esc(game.t('score.credits'))}</p>

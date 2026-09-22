@@ -87,7 +87,8 @@ export class AudioBus {
     if (!this.enabled) return;
     this.ensure();
     if (!this.ctx) return;
-    const recipe = { ...(RECIPES[kind] || RECIPES.ui), ...opts };
+    // Undefined overrides must not erase recipe defaults (notably weapon gain).
+    const recipe = { ...(RECIPES[kind] || RECIPES.ui), ...Object.fromEntries(Object.entries(opts).filter(([, value]) => value !== undefined)) };
     const t = this.ctx.currentTime;
     const gain = this.ctx.createGain();
     const filter = this.ctx.createBiquadFilter();
@@ -97,7 +98,7 @@ export class AudioBus {
     osc.type = recipe.type || 'sine';
     osc.frequency.setValueAtTime(recipe.freq || 200, t);
     osc.frequency.exponentialRampToValueAtTime(Math.max(40, recipe.slide || recipe.freq || 80), t + recipe.dur);
-    gain.gain.setValueAtTime(recipe.gain || 0.08, t);
+    gain.gain.setValueAtTime(recipe.gain ?? 0.08, t);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + recipe.dur + 0.02);
     osc.connect(filter);
     filter.connect(gain);
@@ -129,7 +130,7 @@ export class AudioBus {
   }
 
   weapon(kind, quiet = false) {
-    this.play(kind || 'ar', { gain: quiet ? 0.05 : undefined });
+    this.play(kind || 'ar', quiet ? { gain: 0.05 } : {});
   }
 
   footstep(surface, speed, dist = 0, quiet = 1) {
