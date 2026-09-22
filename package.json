@@ -1,0 +1,24 @@
+{
+  "name": "vectorbreak",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Vectorbreak — original fast-paced third-person competitive arena shooter.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "server": "node server/index.js",
+    "start": "node server/index.js",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5173",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "SEE LICENSE IN README.md",
+  "dependencies": {
+    "three": "^0.186.0",
+    "vite": "^8.3.0",
+    "ws": "^8.21.3"
+  }
+}
