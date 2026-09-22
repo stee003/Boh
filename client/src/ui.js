@@ -125,7 +125,11 @@ export function refresh(game) {
   const foot = document.getElementById('foot-season');
   if (foot) foot.textContent = game.t('menu.version');
   const status = document.getElementById('foot-status');
-  if (status) status.textContent = game.net?.online ? `${game.t('net.connected')} ${game.net.ping || 0}ms` : game.t('net.local');
+  if (status) {
+    status.textContent = !game.viewReady
+      ? game.t('meta.loading')
+      : game.net?.online ? `${game.t('net.connected')} ${game.net.ping || 0}ms` : game.t('net.local');
+  }
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = game.t(el.dataset.i18n); });
   if (!game.inMatch) renderPanel(game);
   document.documentElement.style.setProperty('--hud', String(game.settings.hudScale || 1));

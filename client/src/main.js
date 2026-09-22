@@ -1,4 +1,3 @@
-import { createView, teamPalette } from './render.js';
 import { AudioBus } from './audio.js';
 import { Input, defaultBindings } from './input.js';
 import { Relay } from './net.js';
@@ -46,10 +45,13 @@ const game = {
 const canvas = document.getElementById('view');
 const audio = new AudioBus();
 const input = new Input();
-const view = createView(canvas);
+let view = null;
+let teamPalette = fallbackPalette;
 game.audio = audio;
 game.input = input;
-game.view = view;
+game.view = null;
+game.viewReady = false;
+game.webglError = null;
 game.i18n = createI18n('en');
 game.t = (k, v) => game.i18n.t(k, v);
 game.settings = loadSettings();
@@ -58,8 +60,6 @@ game.i18n.set(game.settings.lang || 'en');
 input.setBindings(game.settings.bindings);
 input.capture = false;
 applyAudio();
-view.setQuality(game.settings.quality);
-view.state.palette = teamPalette(game.settings.colorblind);
 
 game.net = new Relay(game);
 game.net.token = game.profile.token;
@@ -73,10 +73,10 @@ game.onRelayFault = () => {
 
 mountUI(document.getElementById('ui'), game);
 renderHUD(game);
-bootMenu();
-document.getElementById('boot')?.remove();
+dismissBoot();
 game.net.connect();
 setInterval(() => game.net.pulse(), 2000);
+game.graphicsReady = bootGraphics();
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('pointerdown', () => {
@@ -109,11 +109,11 @@ function loop(now) {
   else if (game.inMatch) tickLocal(dt);
   else tickMenu(dt);
   input.endFrame();
-  view.render();
+  view?.render?.();
 }
-requestAnimationFrame(loop);
 
 function tickMenu(dt) {
+  if (!view?.tickMenu) return;
   view.tickMenu(dt);
   const id = game.activeCharacter();
   if (view.state.showcase?.charId !== id) view.setShowcase(id, getCharacter(id).visual?.accent);
@@ -594,6 +594,11 @@ async function startMatch(config) {
   game.tutorialStep = config.tutorial ? 0 : null;
   game.tutYaw = game.yaw;
   try {
+  if (!game.viewReady) toast(game.t('meta.loading'));
+  if (!(await ensureGraphics())) {
+    toast(game.t('meta.webgl'));
+    return;
+  }
   if (config.relay && game.net.online) {
     const ok = game.net.send({
       type: 'queue',
@@ -711,6 +716,7 @@ game.rankedLockLeft = () => {
 };
 
 function bootMenu() {
+  if (!view?.menuStage) return;
   view.menuStage();
   view.setShowcase(game.activeCharacter(), getCharacter(game.activeCharacter()).visual?.accent);
   showHUD(false);
@@ -835,7 +841,7 @@ game.pickCharacter = (id) => {
   const load = currentLoadout();
   load.characterId = id;
   saveProfile();
-  view.setShowcase(id, getCharacter(id).visual?.accent);
+  view?.setShowcase?.(id, getCharacter(id).visual?.accent);
   refresh(game);
 };
 game.activeCharacter = () => currentLoadout().characterId || 'ryn';
@@ -902,8 +908,10 @@ game.readSettingsFromDom = () => {
     else game.settings[key] = el.value;
   });
   applyAudio();
-  view.setQuality(game.settings.quality);
-  view.state.palette = teamPalette(game.settings.colorblind);
+  if (view?.setQuality) {
+    view.setQuality(game.settings.quality);
+    view.state.palette = teamPalette(game.settings.colorblind);
+  }
   saveSettings();
   if (game.screen === 'settings') refresh(game);
 };
@@ -993,7 +1001,10 @@ game.watchReplay = () => {
   game.inMatch = true;
   showHUD(true);
 };
-game.openEditor = () => openEditor();
+game.openEditor = async () => {
+  if (!(await ensureGraphics())) return toast(game.t('meta.webgl'));
+  openEditor();
+};
 game.editorTool = (tool) => { if (game.editor) game.editor.tool = tool; showEditorTools(game); };
 game.playtestEditor = () => {
   if (!game.editor) return;
@@ -1145,7 +1156,7 @@ function tickReplay(dt) {
   if (game.replayIndex >= game.replay.length) game.replayMode = false;
 }
 
-function onRelay(msg) {
+async function onRelay(msg) {
   if (msg.type === 'welcome') {
     game.net.online = true;
     if (msg.token) { game.profile.token = msg.token; game.net.token = msg.token; saveProfile(); }
@@ -1153,6 +1164,11 @@ function onRelay(msg) {
     game.loadBoard?.();
   } else if (msg.type === 'pong') game.net.ping = Math.max(0, Date.now() - (msg.t || 0));
   else if (msg.type === 'start') {
+    if (!(await ensureGraphics())) {
+      toast(game.t('meta.webgl'));
+      game.net.send({ type: 'leave' });
+      return;
+    }
     game.localId = msg.you || game.localId;
     const map = MAPS.find((m) => m.id === msg.mapId) || COMBAT_MAPS[0];
     enterMatch({
@@ -1347,6 +1363,52 @@ function shortest(a, b) {
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
   return d;
+}
+
+function fallbackPalette(mode = 'off') {
+  const sets = {
+    off: { a: '#2ec8ff', b: '#ff5a3c', self: '#5cffd6', enemy: '#ff5a3c' },
+    deutan: { a: '#3d8bff', b: '#ffb000', self: '#7af0ff', enemy: '#ffb000' },
+    protan: { a: '#4aa3ff', b: '#ffe14a', self: '#9ad7ff', enemy: '#ffe14a' },
+    tritan: { a: '#ff5a7a', b: '#3dffe8', self: '#ff8ad4', enemy: '#3dffe8' },
+  };
+  return sets[mode] || sets.off;
+}
+
+function dismissBoot() {
+  window.__vbDismiss?.();
+  document.getElementById('boot')?.remove();
+}
+
+async function ensureGraphics() {
+  if (!game.viewReady && game.graphicsReady) await game.graphicsReady;
+  return !game.webglError && !!view;
+}
+
+async function bootGraphics() {
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  try {
+    const mod = await import('./render.js');
+    teamPalette = mod.teamPalette;
+    const real = mod.createView(canvas);
+    view = real;
+    game.view = real;
+    real.setQuality(game.settings.quality);
+    real.state.palette = teamPalette(game.settings.colorblind);
+    if (!game.inMatch && !game.starting && !game.editor) bootMenu();
+  } catch (err) {
+    console.error(err);
+    game.webglError = err;
+    const webgl = /webgl/i.test(String(err?.message || err));
+    toast(webgl ? game.t('meta.webgl') : (err?.message || game.t('meta.webgl')));
+  } finally {
+    game.viewReady = true;
+    if (!game.inMatch) refresh(game);
+    if (view && !game._loop) {
+      game._loop = true;
+      requestAnimationFrame(loop);
+    }
+  }
 }
 
 window.__VB = game;
