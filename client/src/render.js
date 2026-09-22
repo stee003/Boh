@@ -413,35 +413,56 @@ export function createView(canvas) {
     const g = view.group;
     if (opts.hide) { g.visible = false; return view; }
     g.visible = player.alive || (view.animation.death || 0) < 1;
-    g.position.set(player.x, player.y, player.z);
+    // Remote snapshots arrive at a lower cadence than render frames. Smooth the
+    // visual root independently from the authoritative state; large corrections
+    // still snap so a respawn or teleport can never leave a ghost behind.
+    const tx = Number.isFinite(player.x) ? player.x : 0;
+    const ty = Number.isFinite(player.y) ? player.y : 0;
+    const tz = Number.isFinite(player.z) ? player.z : 0;
+    if (!view.renderPos || view.renderAlive !== !!player.alive || Math.hypot(tx - view.renderPos.x, tz - view.renderPos.z) > 2.4 || Math.abs(ty - view.renderPos.y) > 1.4) {
+      view.renderPos = { x: tx, y: ty, z: tz };
+    } else {
+      const follow = 1 - Math.exp(-24 * Math.max(0, Math.min(0.05, dt || 0)));
+      view.renderPos.x += (tx - view.renderPos.x) * follow;
+      view.renderPos.y += (ty - view.renderPos.y) * follow;
+      view.renderPos.z += (tz - view.renderPos.z) * follow;
+    }
+    view.renderAlive = !!player.alive;
+    g.position.set(view.renderPos.x, view.renderPos.y, view.renderPos.z);
     if (opts.weaponId && view.weaponId !== opts.weaponId) {
       attachWeapon(view, opts.weaponId);
       view.equip = 1;
     }
-    let face = player.yaw || 0;
-    const spd = Math.hypot(player.vx || 0, player.vz || 0);
-    if (player.alive && !player.aiming && !player.dodging && spd > 1.8 && (player.vaultT || 0) <= 0) {
-      face = Math.atan2(player.vx, -(player.vz || 0.0001));
-    }
-    view.bodyYaw = dampAngle(view.bodyYaw, face, player.aiming ? 18 : 11, dt);
+    // Keep the lower body aligned to the aim direction. Letting the whole actor
+    // turn toward velocity made a left/right strafe look like a forward run and,
+    // more importantly, put the weapon behind the torso from the shoulder camera.
+    // The locomotion pose below carries the travel direction instead.
+    const face = player.yaw || 0;
+    view.bodyYaw = dampAngle(view.bodyYaw, face, player.aiming ? 22 : 16, dt);
     g.rotation.set(0, Math.PI - view.bodyYaw, 0);
     const twist = Math.max(-1.15, Math.min(1.15, shortest(view.bodyYaw, player.yaw || 0)));
-    view.upper.rotation.y = -twist;
     view.phase += dt;
     const pose = animatePose(view.animation, player, dt);
-    view.hips.position.y = pose.height;
+    view.hips.position.set(pose.pelvisX, pose.height, pose.pelvisZ);
     view.hips.rotation.set(pose.lean, 0, pose.roll);
-    view.head.rotation.x = -(player.pitch || 0) * 0.4;
+    // The torso, shoulders and head are a second, damped motion layer. This is
+    // intentionally separate from the legs so the operator keeps a readable
+    // weapon-ready silhouette while the pelvis and feet absorb the gait.
+    view.upper.rotation.set(pose.torsoPitch, -twist + pose.torsoYaw, pose.torsoRoll);
+    view.head.rotation.set(pose.headPitch, pose.headYaw, pose.headRoll);
     view.ads = damp(view.ads || 0, player.aiming ? 1 : 0, 14, dt);
     view.armR.position.set(0.32 - view.ads * 0.08, 0.42 + view.ads * 0.06, 0.08);
-    view.legL.rotation.x = pose.legL;
-    view.legR.rotation.x = pose.legR;
-    view.kneeL.rotation.x = pose.kneeL;
-    view.kneeR.rotation.x = pose.kneeR;
-    view.armR.rotation.set(pose.armR, 0, -0.08);
-    view.armL.rotation.set(pose.armL, 0, -0.32);
-    view.elbowR.rotation.x = pose.elbowR;
-    view.elbowL.rotation.x = pose.elbowL;
+    view.armL.position.set(-0.27, 0.44, 0);
+    view.legL.rotation.set(pose.legL, pose.legYawL, pose.legRollL);
+    view.legR.rotation.set(pose.legR, pose.legYawR, pose.legRollR);
+    view.kneeL.rotation.set(pose.kneeL, pose.kneeYawL, pose.kneeRollL);
+    view.kneeR.rotation.set(pose.kneeR, pose.kneeYawR, pose.kneeRollR);
+    view.armR.rotation.set(pose.armR, pose.armRYaw, pose.armRRoll);
+    view.armL.rotation.set(pose.armL, pose.armLYaw, pose.armLRoll);
+    view.elbowR.rotation.set(pose.elbowR, pose.elbowRYaw, 0);
+    view.elbowL.rotation.set(pose.elbowL, pose.elbowLYaw, 0);
+    if (view.padL) view.padL.rotation.z = Math.PI / 2 + pose.shoulderL;
+    if (view.padR) view.padR.rotation.z = Math.PI / 2 + pose.shoulderR;
     if (opts.emote) {
       view.armR.rotation.x = -2.6;
       view.armL.rotation.x = -2.6;
@@ -451,7 +472,13 @@ export function createView(canvas) {
     view.flashT = Math.max(0, (view.flashT || 0) - dt);
     view.flash.visible = view.flashT > 0 && !player.isDummy;
     view.flash.rotation.z += dt * 45;
+    // Keep the weapon on a dedicated right-hand mount and give it a small
+    // presentation bias. It remains in the depth-tested scene (not a HUD
+    // overlay), but cannot vanish inside the torso during a strafe or kick.
+    view.weapon.visible = player.alive !== false;
     view.weapon.position.z = view.weaponBaseZ - view.kick * 0.08;
+    view.weapon.position.x = 0.015;
+    view.weapon.renderOrder = 4;
     // Counter-rotate the bent elbow so the barrel follows the actual pitch.
     view.weapon.rotation.set(1.5 - view.kick * 0.12 + pose.gunTilt + view.equip * 0.65, 0, pose.gunRoll);
     if (view.magazine) view.magazine.position.y = view.magazine.userData.baseY - pose.magDrop;
@@ -970,12 +997,15 @@ function buildActor(player, palette) {
   // ── Torso (rounded ribcage + tapered abdomen + collar) ──
   const torsoB = {};
   put(torsoB, cloth, RBOX(0.3 * bulk, 0.18, 0.22, 0.05), { y: 0.02 });            // pelvis
+  put(torsoB, dark, RBOX(0.31 * bulk, 0.055, 0.25, 0.018), { y: 0.08, z: 0.02 });   // utility belt
   put(torsoB, cloth, xform(CAP(0.16 * bulk, 0.26), { sx: 1.42, sy: 1, sz: 0.86, y: 0.3 })); // ribcage
   put(torsoB, clothDark, CYL(0.155 * bulk, 0.135 * bulk, 0.2, 14), { y: 0.1 });    // abdomen taper
   put(torsoB, clothDark, CYL(0.095, 0.13, 0.07, 12), { y: 0.52 });                // collar
+  put(torsoB, dark, CYL(0.065, 0.07, 0.11, 12), { y: 0.59 });                       // neck seal
   put(torsoB, dark, RBOX(0.34 * bulk, 0.3, 0.07, 0.03), { y: 0.32, z: 0.12 });    // chest plate
   put(torsoB, dark, xform(SPH(0.085, 12, 8), { sx: 1.4, sy: 0.7, sz: 0.6, y: 0.05, z: 0.11 })); // groin guard
   put(torsoB, accentMat, RBOX(0.09, 0.11, 0.03, 0.012), { y: 0.33, z: 0.16 });    // chest core
+  put(torsoB, accentMat, RBOX(0.17, 0.018, 0.018, 0.006), { y: 0.48, z: 0.158 });  // collar light
   if (v.seam) {
     put(torsoB, accentMat, RBOX(0.02, 0.4, 0.02, 0.008), { x: 0.23 * bulk, y: 0.28 });
     put(torsoB, accentMat, RBOX(0.02, 0.4, 0.02, 0.008), { x: -0.23 * bulk, y: 0.28 });
@@ -1011,8 +1041,12 @@ function buildActor(player, palette) {
     visor.position.set(0, 0.008, 0.108);
   }
   head.add(...bakedMeshes(headB), visor);
+  // Team read is integrated into the helmet rather than floating as a marker
+  // above the skull. The visor and chest already carry the strong long-range
+  // color cue; this small badge gives close views a clean identification point.
   const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.05, 0), teamMat);
-  marker.position.set(0, 0.26, 0);
+  marker.position.set(0, 0.18, 0.112);
+  marker.scale.set(0.7, 0.5, 0.35);
   head.add(marker);
   head.userData.visor = visor;
   if (v.antenna) {
@@ -1032,6 +1066,7 @@ function buildActor(player, palette) {
     const arm = new THREE.Group();
     const b = {};
     put(b, clothDark, xform(SPH(0.1 * Math.max(0.8, padScale), 12, 9), { sx: 1.05, sy: 0.8, sz: 1.0, y: -0.015 })); // pauldron/deltoid
+    put(b, accentMat, RBOX(0.06, 0.07, 0.025, 0.008, 2), { y: 0.01, z: 0.07 }); // shoulder signal
     put(b, dark, CAP(0.052, 0.13), { y: -0.12 });                       // upper arm
     const elbow = new THREE.Group();
     elbow.position.y = -0.23;
@@ -1053,20 +1088,28 @@ function buildActor(player, palette) {
   armR.add(...madeR.arm.children);
   const elbowL = madeL.elbow;
   const elbowR = madeR.elbow;
+  // The mount is deliberately a little forward and outboard of the elbow. It
+  // gives the camera a clean silhouette around the receiver instead of asking
+  // a tiny weapon to compete with the chest plate for the same pixels.
   const weapon = new THREE.Group();
-  weapon.position.set(0, -0.24, 0.06);
+  weapon.position.set(0.015, -0.24, 0.06);
+  weapon.scale.setScalar(1.08);
+  weapon.frustumCulled = false;
   elbowR.add(weapon);
 
   // ── Legs ──
   const makeLeg = (leg) => {
     const b = {};
     put(b, cloth, CAP(0.078 * (0.9 + bulk * 0.1), 0.24), { y: -0.2 });   // thigh
+    put(b, dark, RBOX(0.09, 0.11, 0.035, 0.012), { y: -0.24, z: 0.06 }); // thigh armor
     const knee = new THREE.Group();
     knee.position.y = -0.4;
     const kb = {};
     put(kb, dark, SPH(0.062, 10, 8), { y: 0 });                          // knee joint
+    put(kb, teamMat, RBOX(0.105, 0.085, 0.045, 0.014), { y: -0.015, z: 0.055 }); // knee marker
     put(kb, clothDark, CAP(0.058, 0.3), { y: -0.19 });                  // shin
     put(kb, dark, RBOX(0.12, 0.1, 0.24, 0.03), { y: -0.44, z: 0.05 });   // boot
+    put(kb, accentMat, RBOX(0.09, 0.018, 0.06, 0.006), { y: -0.44, z: 0.17 }); // boot light
     put(kb, dark, xform(SPH(0.06, 10, 8), { sx: 1.0, sy: 0.7, sz: 1.2, y: -0.46, z: 0.15 })); // toe
     knee.add(...bakedMeshes(kb));
     leg.add(...bakedMeshes(b), knee);
@@ -1139,10 +1182,15 @@ function buildActor(player, palette) {
   group.add(selfRing, hitShell);
 
   const flash = new THREE.Group();
-  const flashMat = new THREE.MeshBasicMaterial({
+  const flashOptions = {
     color: '#ffe9b0', transparent: true, opacity: 0.95, side: THREE.DoubleSide,
-    depthWrite: false, blending: THREE.AdditiveBlending, map: glowTexture() || undefined,
-  });
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  };
+  const flashMap = glowTexture();
+  // Do not pass an explicit undefined map: three.js treats that as a material
+  // configuration error in headless validation and some low-tier drivers.
+  if (flashMap) flashOptions.map = flashMap;
+  const flashMat = new THREE.MeshBasicMaterial(flashOptions);
   const f1 = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), flashMat);
   const f2 = f1.clone();
   f2.rotation.y = Math.PI / 2;
@@ -1154,10 +1202,12 @@ function buildActor(player, palette) {
   weapon.add(flash);
 
   const view = {
-    group, hips, upper, torso: upper, head, visor, armL, armR, elbowL, elbowR, legL, legR, kneeL, kneeR, weapon, flash,
+    group, hips, upper, torso: upper, head, visor, armL, armR, elbowL, elbowR, legL, legR, kneeL, kneeR,
+    padL, padR, weapon, flash,
     animation: {},
     charId: player.characterId, team: player.team,
     bodyYaw: 0, phase: Math.random() * 6,
+    renderPos: null, renderAlive: null,
     weaponId: null, weaponBaseZ: 0.12, flashT: 0, kick: 0, prevFiring: false,
     ads: 0, wasFlashed: false, drone, droneBaseY,
   };

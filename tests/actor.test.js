@@ -44,3 +44,12 @@ test('weapon swaps keep every mesh on a real material', () => {
     }
   }
 });
+
+test('the equipped weapon has a stable, visible right-hand mount', () => {
+  const view = buildActor({ id: 't', characterId: 'ryn', team: 'a', alive: true }, { a: '#2ec8ff', b: '#ff5a3c', self: '#5cffd6' });
+  assert.equal(view.weapon.visible, true);
+  assert.equal(view.weapon.frustumCulled, false);
+  assert.ok(view.weapon.scale.x > 1, 'weapon has readable gameplay scale');
+  assert.equal(view.weapon.parent, view.elbowR);
+  assert.ok(view.weapon.position.x > 0, 'weapon is offset outboard from the torso');
+});
