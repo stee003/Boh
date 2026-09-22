@@ -31,3 +31,30 @@ test('reload lowers the magazine then returns it, landing compresses the pose', 
   animatePose(state, standing, 1 / 60);
   assert.ok(state.land > 0.1);
 });
+
+test('lateral locomotion is mirrored and not a forward-run pose', () => {
+  const settle = (player) => {
+    const state = {};
+    let pose;
+    for (let i = 0; i < 36; i++) pose = animatePose(state, player, 1 / 60);
+    return pose;
+  };
+  const forward = settle({ ...standing, vx: 0, vz: -7 });
+  const left = settle({ ...standing, vx: -7, vz: 0 });
+  const right = settle({ ...standing, vx: 7, vz: 0 });
+  assert.ok(Math.abs(left.torsoRoll) > 0.001, 'left strafe has torso counter-roll');
+  assert.ok(left.torsoRoll * right.torsoRoll < 0, 'left and right strafes mirror');
+  assert.ok(Math.abs(left.legYawL - forward.legYawL) > 0.01, 'strafe changes leg path');
+  assert.ok(Math.abs(left.armLYaw - forward.armLYaw) > 0.01, 'strafe changes support arm');
+  assert.ok(Math.max(left.kneeL, left.kneeR, right.kneeL, right.kneeR) > 0.2, 'moving knees bend');
+});
+
+test('locomotion animates the complete upper body, not only the legs', () => {
+  const state = {};
+  let pose;
+  for (let i = 0; i < 36; i++) pose = animatePose(state, { ...standing, vx: 3, vz: -5, yaw: 0 }, 1 / 60);
+  assert.ok(Math.abs(pose.torsoPitch) > 0.001);
+  assert.ok(Math.abs(pose.torsoRoll) > 0.001);
+  assert.ok(Math.abs(pose.headRoll) > 0.001);
+  assert.ok(Math.abs(pose.elbowL - (-0.6)) > 0.001);
+});
